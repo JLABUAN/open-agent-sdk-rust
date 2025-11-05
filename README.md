@@ -758,33 +758,9 @@ open-agent-sdk-rust/
 - `interrupt_demo.rs` – Interrupt capability patterns (timeout, conditional, concurrent)
 - `advanced_patterns.rs` – Retry logic and concurrent request handling
 
-## Development Status
-
-**Current**: 100% feature parity with Python SDK achieved. All core functionality complete with 85+ comprehensive tests.
-
-### Roadmap
-
-- [x] Core `query()` and `Client` struct
-- [x] Tool system with automatic execution
-- [x] Lifecycle hooks (PreToolUse, PostToolUse, UserPromptSubmit)
-- [x] Context management utilities
-- [x] Interrupt capability
-- [x] Retry logic with exponential backoff
-- [x] Comprehensive test suite (85+ tests)
-- [x] Production examples (git commit, log analyzer)
-- [ ] Publish to crates.io
-- [ ] CI/CD setup
-- [ ] Performance benchmarks
-
-### Tested Providers
-
-- **Ollama** - Fully validated with qwen3:8b and kimi-k2:1t-cloud
-- **LM Studio** - Fully validated with qwen2.5-32b-instruct
-- **llama.cpp** - Fully validated with 120B cloud model
-
 ## Documentation
 
-- [API Documentation](https://docs.rs/open-agent-sdk) (after publication)
+- [API Documentation](https://docs.rs/open-agent-sdk)
 - [Python SDK](https://github.com/slb350/open-agent-sdk) - Reference implementation
 - [Examples](examples/) - Comprehensive usage examples
 
@@ -811,7 +787,7 @@ cargo test test_agent_options_builder
 
 ## Requirements
 
-- Rust 1.70+
+- Rust 1.83+
 - Tokio 1.0+ (async runtime)
 - serde, serde_json (serialization)
 - reqwest (HTTP client)
@@ -829,6 +805,6 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
-**Status**: Alpha - API stabilizing, 100% feature parity achieved, ready for crates.io
+**Status**: v0.1.0 Published - 100% feature parity with Python SDK, production-ready
 
 Star this repo if you're building AI agents with local models in Rust!
