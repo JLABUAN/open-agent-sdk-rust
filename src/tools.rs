@@ -205,7 +205,16 @@ impl ToolBuilder {
     }
 
     /// Add a parameter with a type string
+    ///
+    /// If the schema is not an object (e.g., set via `.schema()` with a non-object),
+    /// it will be reset to an empty object before adding the parameter.
     pub fn param(mut self, name: &str, type_str: &str) -> Self {
+        // Ensure schema is an object, reset if not
+        if !self.schema.is_object() {
+            self.schema = serde_json::json!({});
+        }
+
+        // Safe unwrap: we just ensured it's an object
         let obj = self.schema.as_object_mut().unwrap();
         obj.insert(name.to_string(), Value::String(type_str.to_string()));
         self
@@ -314,5 +323,21 @@ mod tests {
         assert_eq!(format["function"]["name"], "test");
         assert_eq!(format["function"]["description"], "Test tool");
         assert!(format["function"]["parameters"].is_object());
+    }
+
+    #[test]
+    fn test_param_after_non_object_schema() {
+        // Edge case: calling .param() after setting schema to non-object
+        // Should reset schema and add param without panicking
+        let tool = tool("test", "Test tool")
+            .schema(json!("string")) // Set to non-object
+            .param("key", "number")  // Should reset schema to {} and add param
+            .build(|_| async { Ok(json!({})) });
+
+        let format = tool.to_openai_format();
+
+        // Verify it worked - schema should be object with the param
+        assert!(format["function"]["parameters"].is_object());
+        assert!(format["function"]["parameters"]["properties"]["key"].is_object());
     }
 }
