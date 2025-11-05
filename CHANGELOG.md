@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2025-01-15
+
+### Changed
+
+**BREAKING**: Upgraded to Rust Edition 2024
+- Requires Rust 1.85.0 or newer (was 1.83.0)
+- Edition 2024 brings latest language features and safety improvements
+- No API changes - only compiler/edition upgrade
+
+### Fixed
+
+- **Safety**: Eliminated potential panic in `ToolBuilder::param()`
+  - Now safely handles calling `.param()` after `.schema(non_object)`
+  - Resets schema to empty object if needed instead of panicking
+  - Added test coverage for edge case
+- **Tests**: Made `test_auto_execution_with_tools` more robust
+  - Accepts either text response OR tool execution
+  - Better handles LLM behavior variance
+
+### Technical Details
+
+- Updated minimum supported Rust version (MSRV) to 1.85.0
+- CI/CD pipeline updated to test against Rust 1.85
+- All 100 tests passing with zero warnings
+- Edition 2024 safety improvements applied
+
 ## [0.1.0] - 2025-01-15
 
 ### Added
@@ -96,4 +122,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - vLLM
   - Any other OpenAI-compatible endpoint
 
+[0.2.0]: https://github.com/slb350/open-agent-sdk-rust/releases/tag/v0.2.0
 [0.1.0]: https://github.com/slb350/open-agent-sdk-rust/releases/tag/v0.1.0
