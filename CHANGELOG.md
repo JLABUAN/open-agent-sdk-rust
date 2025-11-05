@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2025-11-05
+
+### Changed
+
+**BREAKING**: Improved `Client::receive()` API ergonomics
+- Changed signature from `Option<Result<ContentBlock>>` to `Result<Option<ContentBlock>>`
+- More intuitive: errors are always `Err()`, success is always `Ok()`
+- Better ergonomics with `?` operator: `while let Some(block) = client.receive().await? { ... }`
+- Migration: Change `match block? { ... }` inside the loop to `match block { ... }` and move the `?` to the while condition
+
+### Benefits
+
+- **Clearer Intent**: `Ok(Some(block))` = got a block, `Ok(None)` = stream ended, `Err(e)` = error occurred
+- **Better Error Handling**: Can use `?` operator outside the loop instead of inside
+- **More Idiomatic**: Follows Rust conventions for fallible iterators
+
+### Technical Details
+
+- All 85+ tests updated and passing
+- All 10 examples updated with new API
+- Zero breaking changes to other APIs
+- Comprehensive test coverage for new signature
+
 ## [0.2.0] - 2025-11-04
 
 ### Changed
@@ -122,5 +145,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - vLLM
   - Any other OpenAI-compatible endpoint
 
+[0.3.0]: https://github.com/slb350/open-agent-sdk-rust/releases/tag/v0.3.0
 [0.2.0]: https://github.com/slb350/open-agent-sdk-rust/releases/tag/v0.2.0
 [0.1.0]: https://github.com/slb350/open-agent-sdk-rust/releases/tag/v0.1.0
