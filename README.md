@@ -787,7 +787,7 @@ cargo test test_agent_options_builder
 
 ## Requirements
 
-- Rust 1.83+
+- Rust 1.85+
 - Tokio 1.0+ (async runtime)
 - serde, serde_json (serialization)
 - reqwest (HTTP client)

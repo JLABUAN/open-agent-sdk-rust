@@ -133,8 +133,10 @@ mod tests {
 
     #[test]
     fn test_get_base_url_with_provider() {
-        // Clear environment variable
-        env::remove_var("OPEN_AGENT_BASE_URL");
+        // Clear environment variable (safe in test isolation)
+        unsafe {
+            env::remove_var("OPEN_AGENT_BASE_URL");
+        }
 
         let url = get_base_url(Some(Provider::Ollama), None);
         assert_eq!(url, "http://localhost:11434/v1");
@@ -142,8 +144,10 @@ mod tests {
 
     #[test]
     fn test_get_base_url_with_fallback() {
-        // Clear environment variable
-        env::remove_var("OPEN_AGENT_BASE_URL");
+        // Clear environment variable (safe in test isolation)
+        unsafe {
+            env::remove_var("OPEN_AGENT_BASE_URL");
+        }
 
         let url = get_base_url(None, Some("http://custom:8080/v1"));
         assert_eq!(url, "http://custom:8080/v1");
