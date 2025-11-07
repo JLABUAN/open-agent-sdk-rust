@@ -1,61 +1,230 @@
-//! Core types for the Open Agent SDK
+//! Core type definitions for the Open Agent SDK.
+//!
+//! This module contains the fundamental data structures used throughout the SDK for
+//! configuring and interacting with AI agents. The type system is organized into three
+//! main categories:
+//!
+//! # Agent Configuration
+//!
+//! - [`AgentOptions`]: Main configuration struct for agent behavior, model settings,
+//!   and tool management
+//! - [`AgentOptionsBuilder`]: Builder pattern implementation for constructing
+//!   [`AgentOptions`] with validation
+//!
+//! # Message System
+//!
+//! The SDK uses a flexible message system that supports multi-modal content:
+//!
+//! - [`Message`]: Container for conversation messages with role and content
+//! - [`MessageRole`]: Enum defining who sent the message (System, User, Assistant, Tool)
+//! - [`ContentBlock`]: Enum for different content types (text, tool use, tool results)
+//! - [`TextBlock`]: Simple text content
+//! - [`ToolUseBlock`]: Represents an AI request to execute a tool
+//! - [`ToolResultBlock`]: Contains the result of a tool execution
+//!
+//! # OpenAI API Compatibility
+//!
+//! The SDK communicates with LLM providers using the OpenAI-compatible API format.
+//! These types handle serialization/deserialization for streaming responses:
+//!
+//! - [`OpenAIRequest`]: Request payload sent to the API
+//! - [`OpenAIMessage`]: Message format for OpenAI API
+//! - [`OpenAIChunk`]: Streaming response chunk from the API
+//! - [`OpenAIToolCall`], [`OpenAIFunction`]: Tool calling format
+//! - [`OpenAIDelta`], [`OpenAIToolCallDelta`]: Incremental updates in streaming
+//!
+//! # Architecture Overview
+//!
+//! The type system is designed to:
+//!
+//! 1. **Separate concerns**: Internal SDK types (Message, ContentBlock) are distinct
+//!    from API wire format (OpenAI types), allowing flexibility in provider support
+//! 2. **Enable streaming**: OpenAI types support incremental delta parsing for
+//!    real-time responses
+//! 3. **Support tool use**: First-class support for function calling with proper
+//!    request/response tracking
+//! 4. **Provide ergonomics**: Builder pattern and convenience constructors make
+//!    common operations simple
+//!
+//! # Example
+//!
+//! ```no_run
+//! use open_agent_sdk::types::{AgentOptions, Message};
+//!
+//! // Build agent configuration
+//! let options = AgentOptions::builder()
+//!     .model("qwen2.5-32b-instruct")
+//!     .base_url("http://localhost:1234/v1")
+//!     .system_prompt("You are a helpful assistant")
+//!     .max_turns(10)
+//!     .auto_execute_tools(true)
+//!     .build()
+//!     .expect("Valid configuration");
+//!
+//! // Create a user message
+//! let msg = Message::user("Hello, how are you?");
+//! ```
 
 use crate::hooks::Hooks;
 use crate::tools::Tool;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-/// Options for configuring an AI agent
+/// Configuration options for an AI agent instance.
+///
+/// `AgentOptions` controls all aspects of agent behavior including model selection,
+/// conversation management, tool usage, and lifecycle hooks. This struct should be
+/// constructed using [`AgentOptions::builder()`] rather than direct instantiation
+/// to ensure required fields are validated.
+///
+/// # Architecture
+///
+/// The options are organized into several functional areas:
+///
+/// - **Model Configuration**: `model`, `base_url`, `api_key`, `temperature`, `max_tokens`
+/// - **Conversation Control**: `system_prompt`, `max_turns`, `timeout`
+/// - **Tool Management**: `tools`, `auto_execute_tools`, `max_tool_iterations`
+/// - **Lifecycle Hooks**: `hooks` for monitoring and interception
+///
+/// # Thread Safety
+///
+/// Tools are wrapped in `Arc<Tool>` to allow efficient cloning and sharing across
+/// threads, as agents may need to be cloned for parallel processing.
+///
+/// # Examples
+///
+/// ```no_run
+/// use open_agent_sdk::types::AgentOptions;
+///
+/// let options = AgentOptions::builder()
+///     .model("qwen2.5-32b-instruct")
+///     .base_url("http://localhost:1234/v1")
+///     .system_prompt("You are a helpful coding assistant")
+///     .max_turns(5)
+///     .temperature(0.7)
+///     .build()
+///     .expect("Valid configuration");
+/// ```
 #[derive(Clone)]
 pub struct AgentOptions {
-    /// System prompt to set the agent's behavior
+    /// System prompt that defines the agent's behavior and personality.
+    ///
+    /// This is sent as the first message in the conversation to establish
+    /// context and instructions. Can be empty if no system-level guidance
+    /// is needed.
     pub system_prompt: String,
 
-    /// Model name (e.g., "qwen2.5-32b-instruct")
+    /// Model identifier for the LLM to use (e.g., "qwen2.5-32b-instruct", "gpt-4").
+    ///
+    /// This must match a model available at the configured `base_url`.
+    /// Different models have varying capabilities for tool use, context
+    /// length, and response quality.
     pub model: String,
 
-    /// OpenAI-compatible endpoint URL
+    /// OpenAI-compatible API endpoint URL (e.g., "http://localhost:1234/v1").
+    ///
+    /// The SDK communicates using the OpenAI chat completions API format,
+    /// which is widely supported by local inference servers (LM Studio,
+    /// llama.cpp, vLLM) and cloud providers.
     pub base_url: String,
 
-    /// API key (most local servers don't need this)
+    /// API authentication key for the provider.
+    ///
+    /// Many local servers don't require authentication, so the default
+    /// "not-needed" is often sufficient. For cloud providers like OpenAI,
+    /// set this to your actual API key.
     pub api_key: String,
 
-    /// Maximum conversation turns
+    /// Maximum number of conversation turns (user message + assistant response = 1 turn).
+    ///
+    /// This limits how long a conversation can continue. In auto-execution mode
+    /// with tools, this prevents infinite loops. Set to 1 for single-shot
+    /// interactions or higher for multi-turn conversations.
     pub max_turns: u32,
 
-    /// Maximum tokens to generate (None uses provider default)
+    /// Maximum tokens the model should generate in a single response.
+    ///
+    /// `None` uses the provider's default. Lower values constrain response
+    /// length, which can be useful for cost control or ensuring concise answers.
+    /// Note this is separate from the model's context window size.
     pub max_tokens: Option<u32>,
 
-    /// Sampling temperature (0.0 to 2.0)
+    /// Sampling temperature for response generation (typically 0.0 to 2.0).
+    ///
+    /// - 0.0: Deterministic, always picks most likely tokens
+    /// - 0.7: Balanced creativity and consistency (default)
+    /// - 1.0+: More random and creative responses
+    ///
+    /// Lower temperatures are better for factual tasks, higher for creative ones.
     pub temperature: f32,
 
-    /// Request timeout in seconds
+    /// HTTP request timeout in seconds.
+    ///
+    /// Maximum time to wait for the API to respond. Applies per API call,
+    /// not to the entire conversation. Increase for slower models or when
+    /// expecting long responses.
     pub timeout: u64,
 
-    /// Tools available to the agent
+    /// Tools available for the agent to use during conversations.
+    ///
+    /// Tools are wrapped in `Arc` for efficient cloning. When the agent
+    /// receives a tool use request, it looks up the tool by name in this
+    /// vector. Empty by default.
     pub tools: Vec<Arc<Tool>>,
 
-    /// Enable automatic tool execution
+    /// Whether to automatically execute tools and continue the conversation.
+    ///
+    /// - `true`: SDK automatically executes tool calls and sends results back
+    ///   to the model, continuing until no more tools are requested
+    /// - `false`: Tool calls are returned to the caller, who must manually
+    ///   execute them and provide results
+    ///
+    /// Auto-execution is convenient but gives less control. Manual execution
+    /// allows for approval workflows and selective tool access.
     pub auto_execute_tools: bool,
 
-    /// Maximum tool iterations in auto mode
+    /// Maximum iterations of tool execution in automatic mode.
+    ///
+    /// Prevents infinite loops where the agent continuously requests tools.
+    /// Each tool execution attempt counts as one iteration. Only relevant
+    /// when `auto_execute_tools` is true.
     pub max_tool_iterations: u32,
 
-    /// Lifecycle hooks for monitoring and control
+    /// Lifecycle hooks for observing and intercepting agent operations.
+    ///
+    /// Hooks allow you to inject custom logic at various points:
+    /// - Before/after API requests
+    /// - Tool execution interception
+    /// - Response streaming callbacks
+    ///
+    /// Useful for logging, metrics, debugging, and implementing custom
+    /// authorization logic.
     pub hooks: Hooks,
 }
 
+/// Custom Debug implementation to prevent sensitive data leakage.
+///
+/// We override the default Debug implementation because:
+/// 1. The `api_key` field may contain sensitive credentials that shouldn't
+///    appear in logs or error messages
+/// 2. The `tools` vector contains Arc-wrapped closures that don't debug nicely,
+///    so we show a count instead
+///
+/// This ensures that debug output is safe for logging while remaining useful
+/// for troubleshooting.
 impl std::fmt::Debug for AgentOptions {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AgentOptions")
             .field("system_prompt", &self.system_prompt)
             .field("model", &self.model)
             .field("base_url", &self.base_url)
+            // Mask API key to prevent credential leakage in logs
             .field("api_key", &"***")
             .field("max_turns", &self.max_turns)
             .field("max_tokens", &self.max_tokens)
             .field("temperature", &self.temperature)
             .field("timeout", &self.timeout)
+            // Show tool count instead of trying to debug Arc<Tool> contents
             .field("tools", &format!("{} tools", self.tools.len()))
             .field("auto_execute_tools", &self.auto_execute_tools)
             .field("max_tool_iterations", &self.max_tool_iterations)
@@ -64,49 +233,155 @@ impl std::fmt::Debug for AgentOptions {
     }
 }
 
+/// Default values optimized for common single-turn use cases.
+///
+/// These defaults are chosen to:
+/// - Require explicit configuration of critical fields (model, base_url)
+/// - Provide safe, sensible defaults for optional fields
+/// - Work with local inference servers that don't need authentication
 impl Default for AgentOptions {
     fn default() -> Self {
         Self {
+            // Empty string forces users to explicitly set context
             system_prompt: String::new(),
+            // Empty string forces users to explicitly choose a model
             model: String::new(),
+            // Empty string forces users to explicitly configure the endpoint
             base_url: String::new(),
+            // Most local servers (LM Studio, llama.cpp) don't require auth
             api_key: "not-needed".to_string(),
+            // Default to single-shot interaction; users opt into conversations
             max_turns: 1,
+            // 4096 is a reasonable default that works with most models
+            // while preventing runaway generation costs
             max_tokens: Some(4096),
+            // 0.7 balances creativity with consistency for general use
             temperature: 0.7,
+            // 60 seconds handles most requests without timing out prematurely
             timeout: 60,
+            // No tools by default; users explicitly add capabilities
             tools: Vec::new(),
+            // Manual tool execution by default for safety and control
             auto_execute_tools: false,
+            // 5 iterations prevent infinite loops while allowing multi-step workflows
             max_tool_iterations: 5,
+            // Empty hooks for no-op behavior
             hooks: Hooks::new(),
         }
     }
 }
 
 impl AgentOptions {
-    /// Create a new builder for AgentOptions
+    /// Creates a new builder for constructing [`AgentOptions`].
+    ///
+    /// The builder pattern is used because:
+    /// 1. Some fields are required (model, base_url) and need validation
+    /// 2. Many fields have sensible defaults that can be overridden
+    /// 3. The API is more discoverable and readable than struct initialization
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use open_agent_sdk::types::AgentOptions;
+    ///
+    /// let options = AgentOptions::builder()
+    ///     .model("qwen2.5-32b-instruct")
+    ///     .base_url("http://localhost:1234/v1")
+    ///     .build()
+    ///     .expect("Valid configuration");
+    /// ```
     pub fn builder() -> AgentOptionsBuilder {
         AgentOptionsBuilder::default()
     }
 }
 
-/// Builder for AgentOptions
+/// Builder for constructing [`AgentOptions`] with validation.
+///
+/// This builder implements the typestate pattern using `Option<T>` to track
+/// which required fields have been set. The [`build()`](AgentOptionsBuilder::build)
+/// method validates that all required fields are present before creating
+/// the final [`AgentOptions`].
+///
+/// # Required Fields
+///
+/// - `model`: The LLM model identifier
+/// - `base_url`: The API endpoint URL
+///
+/// All other fields have sensible defaults.
+///
+/// # Usage Pattern
+///
+/// 1. Call [`AgentOptions::builder()`]
+/// 2. Chain method calls to set configuration
+/// 3. Call [`build()`](AgentOptionsBuilder::build) to validate and create the final options
+///
+/// Methods return `self` for chaining, following the fluent interface pattern.
+///
+/// # Examples
+///
+/// ```no_run
+/// use open_agent_sdk::types::AgentOptions;
+/// use open_agent_sdk::tools::Tool;
+///
+/// let calculator = Tool::new(
+///     "calculate",
+///     "Perform arithmetic",
+///     serde_json::json!({
+///         "type": "object",
+///         "properties": {
+///             "expression": {"type": "string"}
+///         }
+///     }),
+///     |input| Box::pin(async move {
+///         Ok(serde_json::json!({"result": 42}))
+///     }),
+/// );
+///
+/// let options = AgentOptions::builder()
+///     .model("qwen2.5-32b-instruct")
+///     .base_url("http://localhost:1234/v1")
+///     .system_prompt("You are a helpful assistant")
+///     .max_turns(10)
+///     .temperature(0.8)
+///     .tool(calculator)
+///     .auto_execute_tools(true)
+///     .build()
+///     .expect("Valid configuration");
+/// ```
 #[derive(Default)]
 pub struct AgentOptionsBuilder {
+    /// Optional system prompt; defaults to empty if not set
     system_prompt: Option<String>,
+    /// Required: model identifier
     model: Option<String>,
+    /// Required: API endpoint URL
     base_url: Option<String>,
+    /// Optional API key; defaults to "not-needed"
     api_key: Option<String>,
+    /// Optional max turns; defaults to 1
     max_turns: Option<u32>,
+    /// Optional max tokens; defaults to Some(4096)
     max_tokens: Option<u32>,
+    /// Optional temperature; defaults to 0.7
     temperature: Option<f32>,
+    /// Optional timeout; defaults to 60 seconds
     timeout: Option<u64>,
+    /// Tools to provide; starts empty
     tools: Vec<Arc<Tool>>,
+    /// Optional auto-execute flag; defaults to false
     auto_execute_tools: Option<bool>,
+    /// Optional max iterations; defaults to 5
     max_tool_iterations: Option<u32>,
+    /// Lifecycle hooks; defaults to empty
     hooks: Hooks,
 }
 
+/// Custom Debug implementation for builder to show minimal useful information.
+///
+/// Similar to [`AgentOptions`], we provide a simplified debug output that:
+/// - Omits sensitive fields like API keys (not shown at all in builder)
+/// - Shows tool count rather than tool details
+/// - Focuses on the most important configuration fields
 impl std::fmt::Debug for AgentOptionsBuilder {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AgentOptionsBuilder")
@@ -118,73 +393,345 @@ impl std::fmt::Debug for AgentOptionsBuilder {
     }
 }
 
+/// Builder methods for configuring agent options.
+///
+/// All methods follow the builder pattern: they consume `self`, update a field,
+/// and return `self` for method chaining. The generic `impl Into<String>` parameters
+/// allow passing `&str`, `String`, or any other type that converts to `String`.
 impl AgentOptionsBuilder {
+    /// Sets the system prompt that defines agent behavior.
+    ///
+    /// The system prompt is sent at the beginning of every conversation to
+    /// establish context, personality, and instructions for the agent.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use open_agent_sdk::types::AgentOptions;
+    /// let options = AgentOptions::builder()
+    ///     .model("qwen2.5-32b-instruct")
+    ///     .base_url("http://localhost:1234/v1")
+    ///     .system_prompt("You are a helpful coding assistant. Be concise.")
+    ///     .build()
+    ///     .unwrap();
+    /// ```
     pub fn system_prompt(mut self, prompt: impl Into<String>) -> Self {
         self.system_prompt = Some(prompt.into());
         self
     }
 
+    /// Sets the model identifier (required).
+    ///
+    /// This must match a model available at your configured endpoint.
+    /// Common examples: "qwen2.5-32b-instruct", "gpt-4", "claude-3-sonnet".
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use open_agent_sdk::types::AgentOptions;
+    /// let options = AgentOptions::builder()
+    ///     .model("gpt-4")
+    ///     .base_url("https://api.openai.com/v1")
+    ///     .build()
+    ///     .unwrap();
+    /// ```
     pub fn model(mut self, model: impl Into<String>) -> Self {
         self.model = Some(model.into());
         self
     }
 
+    /// Sets the API endpoint URL (required).
+    ///
+    /// Must be an OpenAI-compatible endpoint. Common values:
+    /// - Local: "http://localhost:1234/v1" (LM Studio default)
+    /// - OpenAI: "https://api.openai.com/v1"
+    /// - Custom: Your inference server URL
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use open_agent_sdk::types::AgentOptions;
+    /// let options = AgentOptions::builder()
+    ///     .model("qwen2.5-32b-instruct")
+    ///     .base_url("http://localhost:1234/v1")
+    ///     .build()
+    ///     .unwrap();
+    /// ```
     pub fn base_url(mut self, url: impl Into<String>) -> Self {
         self.base_url = Some(url.into());
         self
     }
 
+    /// Sets the API key for authentication.
+    ///
+    /// Required for cloud providers like OpenAI. Most local servers don't
+    /// need this - the default "not-needed" works fine.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use open_agent_sdk::types::AgentOptions;
+    /// let options = AgentOptions::builder()
+    ///     .model("gpt-4")
+    ///     .base_url("https://api.openai.com/v1")
+    ///     .api_key("sk-...")
+    ///     .build()
+    ///     .unwrap();
+    /// ```
     pub fn api_key(mut self, key: impl Into<String>) -> Self {
         self.api_key = Some(key.into());
         self
     }
 
+    /// Sets the maximum number of conversation turns.
+    ///
+    /// One turn = user message + assistant response. Higher values enable
+    /// longer conversations but may increase costs and latency.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use open_agent_sdk::types::AgentOptions;
+    /// let options = AgentOptions::builder()
+    ///     .model("qwen2.5-32b-instruct")
+    ///     .base_url("http://localhost:1234/v1")
+    ///     .max_turns(10)  // Allow multi-turn conversation
+    ///     .build()
+    ///     .unwrap();
+    /// ```
     pub fn max_turns(mut self, turns: u32) -> Self {
         self.max_turns = Some(turns);
         self
     }
 
+    /// Sets the maximum tokens to generate per response.
+    ///
+    /// Constrains response length. Lower values reduce costs but may truncate
+    /// responses. Higher values allow longer, more complete answers.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use open_agent_sdk::types::AgentOptions;
+    /// let options = AgentOptions::builder()
+    ///     .model("qwen2.5-32b-instruct")
+    ///     .base_url("http://localhost:1234/v1")
+    ///     .max_tokens(1000)  // Limit to shorter responses
+    ///     .build()
+    ///     .unwrap();
+    /// ```
     pub fn max_tokens(mut self, tokens: u32) -> Self {
         self.max_tokens = Some(tokens);
         self
     }
 
+    /// Sets the sampling temperature for response generation.
+    ///
+    /// Controls randomness:
+    /// - 0.0: Deterministic, always picks most likely tokens
+    /// - 0.7: Balanced (default)
+    /// - 1.0+: More creative/random
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use open_agent_sdk::types::AgentOptions;
+    /// let options = AgentOptions::builder()
+    ///     .model("qwen2.5-32b-instruct")
+    ///     .base_url("http://localhost:1234/v1")
+    ///     .temperature(0.0)  // Deterministic for coding tasks
+    ///     .build()
+    ///     .unwrap();
+    /// ```
     pub fn temperature(mut self, temp: f32) -> Self {
         self.temperature = Some(temp);
         self
     }
 
+    /// Sets the HTTP request timeout in seconds.
+    ///
+    /// How long to wait for the API to respond. Increase for slower models
+    /// or when expecting long responses.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use open_agent_sdk::types::AgentOptions;
+    /// let options = AgentOptions::builder()
+    ///     .model("qwen2.5-32b-instruct")
+    ///     .base_url("http://localhost:1234/v1")
+    ///     .timeout(120)  // 2 minutes for complex tasks
+    ///     .build()
+    ///     .unwrap();
+    /// ```
     pub fn timeout(mut self, timeout: u64) -> Self {
         self.timeout = Some(timeout);
         self
     }
 
+    /// Enables or disables automatic tool execution.
+    ///
+    /// When true, the SDK automatically executes tool calls and continues
+    /// the conversation. When false, tool calls are returned for manual
+    /// handling, allowing approval workflows.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use open_agent_sdk::types::AgentOptions;
+    /// let options = AgentOptions::builder()
+    ///     .model("qwen2.5-32b-instruct")
+    ///     .base_url("http://localhost:1234/v1")
+    ///     .auto_execute_tools(true)  // Automatic execution
+    ///     .build()
+    ///     .unwrap();
+    /// ```
     pub fn auto_execute_tools(mut self, auto: bool) -> Self {
         self.auto_execute_tools = Some(auto);
         self
     }
 
+    /// Sets the maximum tool execution iterations in automatic mode.
+    ///
+    /// Prevents infinite loops where the agent continuously calls tools.
+    /// Only relevant when `auto_execute_tools` is true.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use open_agent_sdk::types::AgentOptions;
+    /// let options = AgentOptions::builder()
+    ///     .model("qwen2.5-32b-instruct")
+    ///     .base_url("http://localhost:1234/v1")
+    ///     .auto_execute_tools(true)
+    ///     .max_tool_iterations(10)  // Allow up to 10 tool calls
+    ///     .build()
+    ///     .unwrap();
+    /// ```
     pub fn max_tool_iterations(mut self, iterations: u32) -> Self {
         self.max_tool_iterations = Some(iterations);
         self
     }
 
+    /// Adds a single tool to the agent's available tools.
+    ///
+    /// The tool is wrapped in `Arc` for efficient sharing. Can be called
+    /// multiple times to add multiple tools.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use open_agent_sdk::types::AgentOptions;
+    /// # use open_agent_sdk::tools::Tool;
+    /// let calculator = Tool::new(
+    ///     "calculate",
+    ///     "Evaluate a math expression",
+    ///     serde_json::json!({"type": "object"}),
+    ///     |input| Box::pin(async move { Ok(serde_json::json!({"result": 42})) }),
+    /// );
+    ///
+    /// let options = AgentOptions::builder()
+    ///     .model("qwen2.5-32b-instruct")
+    ///     .base_url("http://localhost:1234/v1")
+    ///     .tool(calculator)
+    ///     .build()
+    ///     .unwrap();
+    /// ```
     pub fn tool(mut self, tool: Tool) -> Self {
         self.tools.push(Arc::new(tool));
         self
     }
 
+    /// Adds multiple tools at once to the agent's available tools.
+    ///
+    /// Convenience method for bulk tool addition. All tools are wrapped
+    /// in `Arc` automatically.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use open_agent_sdk::types::AgentOptions;
+    /// # use open_agent_sdk::tools::Tool;
+    /// let tools = vec![
+    ///     Tool::new("add", "Add numbers", serde_json::json!({}),
+    ///         |input| Box::pin(async move { Ok(serde_json::json!({})) })),
+    ///     Tool::new("multiply", "Multiply numbers", serde_json::json!({}),
+    ///         |input| Box::pin(async move { Ok(serde_json::json!({})) })),
+    /// ];
+    ///
+    /// let options = AgentOptions::builder()
+    ///     .model("qwen2.5-32b-instruct")
+    ///     .base_url("http://localhost:1234/v1")
+    ///     .tools(tools)
+    ///     .build()
+    ///     .unwrap();
+    /// ```
     pub fn tools(mut self, tools: Vec<Tool>) -> Self {
         self.tools.extend(tools.into_iter().map(Arc::new));
         self
     }
 
+    /// Sets lifecycle hooks for monitoring and intercepting agent operations.
+    ///
+    /// Hooks allow custom logic at various points: before/after API calls,
+    /// tool execution, response streaming, etc. Useful for logging, metrics,
+    /// debugging, and custom authorization.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use open_agent_sdk::types::AgentOptions;
+    /// # use open_agent_sdk::hooks::Hooks;
+    /// let hooks = Hooks::new()
+    ///     .on_llm_request(|req| println!("Sending request: {:?}", req));
+    ///
+    /// let options = AgentOptions::builder()
+    ///     .model("qwen2.5-32b-instruct")
+    ///     .base_url("http://localhost:1234/v1")
+    ///     .hooks(hooks)
+    ///     .build()
+    ///     .unwrap();
+    /// ```
     pub fn hooks(mut self, hooks: Hooks) -> Self {
         self.hooks = hooks;
         self
     }
 
+    /// Validates configuration and builds the final [`AgentOptions`].
+    ///
+    /// This method performs validation to ensure required fields are set and
+    /// applies default values for optional fields. Returns an error if
+    /// validation fails.
+    ///
+    /// # Required Fields
+    ///
+    /// - `model`: Must be set or build() returns an error
+    /// - `base_url`: Must be set or build() returns an error
+    ///
+    /// # Errors
+    ///
+    /// Returns a configuration error if any required field is missing.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use open_agent_sdk::types::AgentOptions;
+    /// // Success - all required fields set
+    /// let options = AgentOptions::builder()
+    ///     .model("qwen2.5-32b-instruct")
+    ///     .base_url("http://localhost:1234/v1")
+    ///     .build()
+    ///     .expect("Valid configuration");
+    ///
+    /// // Error - missing model
+    /// let result = AgentOptions::builder()
+    ///     .base_url("http://localhost:1234/v1")
+    ///     .build();
+    /// assert!(result.is_err());
+    /// ```
     pub fn build(self) -> crate::Result<AgentOptions> {
+        // Validate required fields - these must be explicitly set by the user
+        // because they're fundamental to connecting to an LLM provider
         let model = self
             .model
             .ok_or_else(|| crate::Error::config("model is required"))?;
@@ -193,63 +740,221 @@ impl AgentOptionsBuilder {
             .base_url
             .ok_or_else(|| crate::Error::config("base_url is required"))?;
 
+        // Construct the final options, applying defaults where values weren't set
         Ok(AgentOptions {
+            // Empty system prompt is valid - not all use cases need one
             system_prompt: self.system_prompt.unwrap_or_default(),
             model,
             base_url,
+            // Default API key works for most local servers
             api_key: self.api_key.unwrap_or_else(|| "not-needed".to_string()),
+            // Default to single-turn for simplicity
             max_turns: self.max_turns.unwrap_or(1),
+            // If max_tokens was explicitly set to Some(n), use it; otherwise default to Some(4096).
+            // We use .or() here rather than .unwrap_or() because max_tokens is Option<u32>
             max_tokens: self.max_tokens.or(Some(4096)),
+            // Balanced temperature for general use
             temperature: self.temperature.unwrap_or(0.7),
+            // Conservative timeout that works for most requests
             timeout: self.timeout.unwrap_or(60),
+            // Tools vector was built up during configuration, use as-is
             tools: self.tools,
+            // Manual execution by default for safety and control
             auto_execute_tools: self.auto_execute_tools.unwrap_or(false),
+            // Reasonable limit to prevent runaway tool loops
             max_tool_iterations: self.max_tool_iterations.unwrap_or(5),
+            // Hooks were built up during configuration, use as-is
             hooks: self.hooks,
         })
     }
 }
 
-/// Message role in the conversation
+/// Identifies the sender/role of a message in the conversation.
+///
+/// This enum follows the standard chat completion role system used by most
+/// LLM APIs. The role determines how the message is interpreted and processed.
+///
+/// # Serialization
+///
+/// Serializes to lowercase strings via serde (`"system"`, `"user"`, etc.)
+/// to match OpenAI API format.
+///
+/// # Role Semantics
+///
+/// - [`System`](MessageRole::System): Establishes context, instructions, and behavior
+/// - [`User`](MessageRole::User): Input from the human or calling application
+/// - [`Assistant`](MessageRole::Assistant): Response from the AI model
+/// - [`Tool`](MessageRole::Tool): Results from tool/function execution
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum MessageRole {
+    /// System message that establishes agent behavior and context.
+    ///
+    /// Typically the first message in a conversation. Used for instructions,
+    /// personality definition, and constraints that apply throughout the
+    /// conversation.
     System,
+
+    /// User message representing human or application input.
+    ///
+    /// The prompt or query that the agent should respond to. In multi-turn
+    /// conversations, user messages alternate with assistant messages.
     User,
+
+    /// Assistant message containing the AI model's response.
+    ///
+    /// Can include text, tool use requests, or both. When the model wants to
+    /// call a tool, it includes ToolUseBlock content.
     Assistant,
+
+    /// Tool result message containing function execution results.
+    ///
+    /// Sent back to the model after executing a requested tool. Contains the
+    /// tool's output that the model can use in its next response.
     Tool,
 }
 
-/// Content block types that can appear in messages
+/// Multi-modal content blocks that can appear in messages.
+///
+/// Messages are composed of one or more content blocks, allowing rich,
+/// structured communication between the user, assistant, and tools.
+///
+/// # Serialization
+///
+/// Uses serde's "externally tagged" enum format with a `"type"` field:
+/// ```json
+/// {"type": "text", "text": "Hello"}
+/// {"type": "tool_use", "id": "call_123", "name": "search", "input": {...}}
+/// {"type": "tool_result", "tool_use_id": "call_123", "content": {...}}
+/// ```
+///
+/// # Block Types
+///
+/// - [`Text`](ContentBlock::Text): Simple text content
+/// - [`ToolUse`](ContentBlock::ToolUse): Request from model to execute a tool
+/// - [`ToolResult`](ContentBlock::ToolResult): Result of tool execution
+///
+/// # Usage
+///
+/// Messages can contain multiple blocks. For example, an assistant message
+/// might include text explaining its reasoning followed by a tool use request.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ContentBlock {
+    /// Text content block containing a string message.
     Text(TextBlock),
+
+    /// Tool use request from the model to execute a function.
     ToolUse(ToolUseBlock),
+
+    /// Tool execution result sent back to the model.
     ToolResult(ToolResultBlock),
 }
 
-/// Text content block
+/// Simple text content in a message.
+///
+/// The most common content type, representing plain text communication.
+/// Both users and assistants primarily use text blocks for their messages.
+///
+/// # Example
+///
+/// ```
+/// use open_agent_sdk::types::{TextBlock, ContentBlock};
+///
+/// let block = TextBlock::new("Hello, world!");
+/// let content = ContentBlock::Text(block);
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TextBlock {
+    /// The text content.
     pub text: String,
 }
 
 impl TextBlock {
+    /// Creates a new text block from any string-like type.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use open_agent_sdk::types::TextBlock;
+    ///
+    /// let block = TextBlock::new("Hello");
+    /// assert_eq!(block.text, "Hello");
+    /// ```
     pub fn new(text: impl Into<String>) -> Self {
         Self { text: text.into() }
     }
 }
 
-/// Tool use content block
+/// Tool use request from the AI model.
+///
+/// When the model determines it needs to call a tool/function, it returns
+/// a ToolUseBlock specifying which tool to call and with what parameters.
+/// The application must then execute the tool and return results via
+/// [`ToolResultBlock`].
+///
+/// # Fields
+///
+/// - `id`: Unique identifier for this tool call, used to correlate results
+/// - `name`: Name of the tool to execute (must match a registered tool)
+/// - `input`: JSON parameters to pass to the tool
+///
+/// # Example
+///
+/// ```
+/// use open_agent_sdk::types::{ToolUseBlock, ContentBlock};
+/// use serde_json::json;
+///
+/// let block = ToolUseBlock::new(
+///     "call_123",
+///     "calculate",
+///     json!({"expression": "2 + 2"})
+/// );
+/// assert_eq!(block.id, "call_123");
+/// assert_eq!(block.name, "calculate");
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolUseBlock {
+    /// Unique identifier for this tool call.
+    ///
+    /// Generated by the model. Used to correlate the tool result back to
+    /// this specific request, especially when multiple tools are called.
     pub id: String,
+
+    /// Name of the tool to execute.
+    ///
+    /// Must match the name of a tool that was provided in the agent's
+    /// configuration, otherwise execution will fail.
     pub name: String,
+
+    /// JSON parameters to pass to the tool.
+    ///
+    /// The structure should match the tool's input schema. The tool's
+    /// execution function receives this value as input.
     pub input: serde_json::Value,
 }
 
 impl ToolUseBlock {
+    /// Creates a new tool use block.
+    ///
+    /// # Parameters
+    ///
+    /// - `id`: Unique identifier for this tool call
+    /// - `name`: Name of the tool to execute
+    /// - `input`: JSON parameters for the tool
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use open_agent_sdk::types::ToolUseBlock;
+    /// use serde_json::json;
+    ///
+    /// let block = ToolUseBlock::new(
+    ///     "call_abc",
+    ///     "search",
+    ///     json!({"query": "Rust async programming"})
+    /// );
+    /// ```
     pub fn new(id: impl Into<String>, name: impl Into<String>, input: serde_json::Value) -> Self {
         Self {
             id: id.into(),
@@ -259,14 +964,68 @@ impl ToolUseBlock {
     }
 }
 
-/// Tool result block
+/// Tool execution result sent back to the model.
+///
+/// After executing a tool requested via [`ToolUseBlock`], the application
+/// creates a ToolResultBlock containing the tool's output and sends it back
+/// to the model. The model then uses this information in its next response.
+///
+/// # Fields
+///
+/// - `tool_use_id`: Must match the `id` from the corresponding ToolUseBlock
+/// - `content`: JSON result from the tool execution
+///
+/// # Example
+///
+/// ```
+/// use open_agent_sdk::types::{ToolResultBlock, ContentBlock};
+/// use serde_json::json;
+///
+/// let result = ToolResultBlock::new(
+///     "call_123",
+///     json!({"result": 4})
+/// );
+/// assert_eq!(result.tool_use_id, "call_123");
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolResultBlock {
+    /// ID of the tool use request this result corresponds to.
+    ///
+    /// Must match the `id` field from the ToolUseBlock that requested
+    /// this tool execution. This correlation is essential for the model
+    /// to understand which tool call produced which result.
     pub tool_use_id: String,
+
+    /// JSON result from executing the tool.
+    ///
+    /// Contains the tool's output data. Can be any valid JSON structure -
+    /// the model will interpret it based on the tool's description and
+    /// output schema.
     pub content: serde_json::Value,
 }
 
 impl ToolResultBlock {
+    /// Creates a new tool result block.
+    ///
+    /// # Parameters
+    ///
+    /// - `tool_use_id`: ID from the corresponding ToolUseBlock
+    /// - `content`: JSON result from tool execution
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use open_agent_sdk::types::ToolResultBlock;
+    /// use serde_json::json;
+    ///
+    /// let result = ToolResultBlock::new(
+    ///     "call_xyz",
+    ///     json!({
+    ///         "status": "success",
+    ///         "data": {"temperature": 72}
+    ///     })
+    /// );
+    /// ```
     pub fn new(tool_use_id: impl Into<String>, content: serde_json::Value) -> Self {
         Self {
             tool_use_id: tool_use_id.into(),
@@ -275,18 +1034,98 @@ impl ToolResultBlock {
     }
 }
 
-/// A message in the conversation
+/// A complete message in a conversation.
+///
+/// Messages are the primary unit of communication in the agent system. Each
+/// message has a role (who sent it) and content (what it contains). Content
+/// is structured as a vector of blocks to support multi-modal communication.
+///
+/// # Structure
+///
+/// - `role`: Who sent the message ([`MessageRole`])
+/// - `content`: What the message contains (one or more [`ContentBlock`]s)
+///
+/// # Message Patterns
+///
+/// ## Simple Text Message
+/// ```
+/// use open_agent_sdk::types::Message;
+///
+/// let msg = Message::user("What's the weather?");
+/// ```
+///
+/// ## Assistant Response with Tool Call
+/// ```
+/// use open_agent_sdk::types::{Message, ContentBlock, TextBlock, ToolUseBlock};
+/// use serde_json::json;
+///
+/// let msg = Message::assistant(vec![
+///     ContentBlock::Text(TextBlock::new("Let me check that for you.")),
+///     ContentBlock::ToolUse(ToolUseBlock::new(
+///         "call_123",
+///         "get_weather",
+///         json!({"location": "San Francisco"})
+///     ))
+/// ]);
+/// ```
+///
+/// ## Tool Result
+/// ```
+/// use open_agent_sdk::types::{Message, ContentBlock, ToolResultBlock};
+/// use serde_json::json;
+///
+/// let msg = Message::user_with_blocks(vec![
+///     ContentBlock::ToolResult(ToolResultBlock::new(
+///         "call_123",
+///         json!({"temp": 72, "conditions": "sunny"})
+///     ))
+/// ]);
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
+    /// The role/sender of this message.
     pub role: MessageRole,
+
+    /// The content blocks that make up this message.
+    ///
+    /// A message can contain multiple blocks of different types. For example,
+    /// an assistant message might have both text and tool use blocks.
     pub content: Vec<ContentBlock>,
 }
 
 impl Message {
+    /// Creates a new message with the specified role and content.
+    ///
+    /// This is the most general constructor. For convenience, use the
+    /// role-specific constructors like [`user()`](Message::user),
+    /// [`assistant()`](Message::assistant), etc.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use open_agent_sdk::types::{Message, MessageRole, ContentBlock, TextBlock};
+    ///
+    /// let msg = Message::new(
+    ///     MessageRole::User,
+    ///     vec![ContentBlock::Text(TextBlock::new("Hello"))]
+    /// );
+    /// ```
     pub fn new(role: MessageRole, content: Vec<ContentBlock>) -> Self {
         Self { role, content }
     }
 
+    /// Creates a user message with simple text content.
+    ///
+    /// This is the most common way to create user messages. For more complex
+    /// content with multiple blocks, use [`user_with_blocks()`](Message::user_with_blocks).
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use open_agent_sdk::types::Message;
+    ///
+    /// let msg = Message::user("What is 2+2?");
+    /// ```
     pub fn user(text: impl Into<String>) -> Self {
         Self {
             role: MessageRole::User,
@@ -294,6 +1133,20 @@ impl Message {
         }
     }
 
+    /// Creates an assistant message with the specified content blocks.
+    ///
+    /// Assistant messages often contain multiple content blocks (text + tool use).
+    /// This method takes a vector of blocks for maximum flexibility.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use open_agent_sdk::types::{Message, ContentBlock, TextBlock};
+    ///
+    /// let msg = Message::assistant(vec![
+    ///     ContentBlock::Text(TextBlock::new("The answer is 4"))
+    /// ]);
+    /// ```
     pub fn assistant(content: Vec<ContentBlock>) -> Self {
         Self {
             role: MessageRole::Assistant,
@@ -301,6 +1154,18 @@ impl Message {
         }
     }
 
+    /// Creates a system message with simple text content.
+    ///
+    /// System messages establish the agent's behavior and context. They're
+    /// typically sent at the start of a conversation.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use open_agent_sdk::types::Message;
+    ///
+    /// let msg = Message::system("You are a helpful assistant. Be concise.");
+    /// ```
     pub fn system(text: impl Into<String>) -> Self {
         Self {
             role: MessageRole::System,
@@ -308,7 +1173,25 @@ impl Message {
         }
     }
 
-    /// Create a user message with custom content blocks
+    /// Creates a user message with custom content blocks.
+    ///
+    /// Use this when you need to send structured content beyond simple text,
+    /// such as tool results. For simple text messages, prefer
+    /// [`user()`](Message::user).
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use open_agent_sdk::types::{Message, ContentBlock, ToolResultBlock};
+    /// use serde_json::json;
+    ///
+    /// let msg = Message::user_with_blocks(vec![
+    ///     ContentBlock::ToolResult(ToolResultBlock::new(
+    ///         "call_123",
+    ///         json!({"result": "success"})
+    ///     ))
+    /// ]);
+    /// ```
     pub fn user_with_blocks(content: Vec<ContentBlock>) -> Self {
         Self {
             role: MessageRole::User,
@@ -317,100 +1200,475 @@ impl Message {
     }
 }
 
-/// OpenAI API message format
+/// OpenAI API message format for serialization.
+///
+/// This struct represents the wire format for messages when communicating
+/// with OpenAI-compatible APIs. It differs from the internal [`Message`]
+/// type to accommodate the specific serialization requirements of the
+/// OpenAI API.
+///
+/// # Key Differences from Internal Message Type
+///
+/// - Content is a flat string rather than structured blocks
+/// - Tool calls are represented in OpenAI's specific format
+/// - Supports both sending tool calls (via `tool_calls`) and tool results
+///   (via `tool_call_id`)
+///
+/// # Serialization
+///
+/// Optional fields are skipped when `None` to keep payloads minimal.
+///
+/// # Usage
+///
+/// This type is typically created by the SDK internally when converting
+/// from [`Message`] to API format. Users rarely need to construct these
+/// directly.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpenAIMessage {
+    /// Message role as a string ("system", "user", "assistant", "tool").
     pub role: String,
+
+    /// Text content of the message.
+    ///
+    /// For assistant messages with tool calls, this may be empty or contain
+    /// explanatory text. For tool result messages, this contains the
+    /// stringified tool output.
     pub content: String,
+
+    /// Tool calls requested by the assistant (assistant messages only).
+    ///
+    /// When the model wants to call tools, this field contains the list
+    /// of tool invocations with their parameters. Only present in assistant
+    /// messages.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_calls: Option<Vec<OpenAIToolCall>>,
+
+    /// ID of the tool call this message is responding to (tool messages only).
+    ///
+    /// When sending tool results back to the model, this field links the
+    /// result to the original tool call request. Only present in tool
+    /// messages.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_call_id: Option<String>,
 }
 
-/// OpenAI tool call format
+/// OpenAI tool call representation in API messages.
+///
+/// Represents a request from the model to execute a specific function/tool.
+/// This is the wire format used in the OpenAI API, distinct from the internal
+/// [`ToolUseBlock`] representation.
+///
+/// # Structure
+///
+/// Each tool call has:
+/// - A unique ID for correlation with results
+/// - A type (always "function" in current OpenAI API)
+/// - Function details (name and arguments)
+///
+/// # Example JSON
+///
+/// ```json
+/// {
+///   "id": "call_abc123",
+///   "type": "function",
+///   "function": {
+///     "name": "get_weather",
+///     "arguments": "{\"location\":\"San Francisco\"}"
+///   }
+/// }
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpenAIToolCall {
+    /// Unique identifier for this tool call.
+    ///
+    /// Generated by the model. Used to correlate tool results back to
+    /// this specific call.
     pub id: String,
+
+    /// Type of the call (always "function" in current API).
+    ///
+    /// The `rename` attribute ensures this serializes as `"type"` in JSON
+    /// since `type` is a Rust keyword.
     #[serde(rename = "type")]
     pub call_type: String,
+
+    /// Function/tool details (name and arguments).
     pub function: OpenAIFunction,
 }
 
-/// OpenAI function format
+/// OpenAI function call details.
+///
+/// Contains the function name and its arguments in the OpenAI API format.
+/// Note that arguments are serialized as a JSON string, not a JSON object,
+/// which is an OpenAI API quirk.
+///
+/// # Arguments Format
+///
+/// The `arguments` field is a **JSON string**, not a parsed JSON object.
+/// For example: `"{\"x\": 1, \"y\": 2}"` not `{"x": 1, "y": 2}`.
+/// This must be parsed before use.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpenAIFunction {
+    /// Name of the function/tool to call.
     pub name: String,
+
+    /// Function arguments as a **JSON string** (OpenAI API quirk).
+    ///
+    /// Must be parsed as JSON before use. For example, this might contain
+    /// the string `"{\"location\":\"NYC\",\"units\":\"fahrenheit\"}"` which
+    /// needs to be parsed into an actual JSON value.
     pub arguments: String,
 }
 
-/// OpenAI API request
+/// Complete request payload for OpenAI chat completions API.
+///
+/// This struct is serialized and sent as the request body when making
+/// API calls to OpenAI-compatible endpoints. It includes the model,
+/// conversation history, and configuration parameters.
+///
+/// # Streaming
+///
+/// The SDK always uses streaming mode (`stream: true`) to enable real-time
+/// response processing and better user experience.
+///
+/// # Optional Fields
+///
+/// Fields marked with `skip_serializing_if` are omitted from the JSON payload
+/// when `None`, allowing the API provider to use its defaults.
+///
+/// # Example
+///
+/// ```
+/// use open_agent_sdk::types::{OpenAIRequest, OpenAIMessage};
+///
+/// let request = OpenAIRequest {
+///     model: "gpt-4".to_string(),
+///     messages: vec![
+///         OpenAIMessage {
+///             role: "user".to_string(),
+///             content: "Hello!".to_string(),
+///             tool_calls: None,
+///             tool_call_id: None,
+///         }
+///     ],
+///     stream: true,
+///     max_tokens: Some(1000),
+///     temperature: Some(0.7),
+///     tools: None,
+/// };
+/// ```
 #[derive(Debug, Clone, Serialize)]
 pub struct OpenAIRequest {
+    /// Model identifier (e.g., "gpt-4", "qwen2.5-32b-instruct").
     pub model: String,
+
+    /// Conversation history as a sequence of messages.
+    ///
+    /// Includes system prompt, user messages, assistant responses, and
+    /// tool results. Order matters - messages are processed sequentially.
     pub messages: Vec<OpenAIMessage>,
+
+    /// Whether to stream the response.
+    ///
+    /// The SDK always sets this to `true` for better user experience.
+    /// Streaming allows incremental processing of responses rather than
+    /// waiting for the entire completion.
     pub stream: bool,
+
+    /// Maximum tokens to generate (optional).
+    ///
+    /// `None` uses the provider's default. Some providers require this
+    /// to be set explicitly.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_tokens: Option<u32>,
+
+    /// Sampling temperature (optional).
+    ///
+    /// `None` uses the provider's default. Controls randomness in
+    /// generation.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub temperature: Option<f32>,
+
+    /// Tools/functions available to the model (optional).
+    ///
+    /// When present, enables function calling. Each tool is described
+    /// with a JSON schema defining its parameters. `None` means no
+    /// tools are available.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tools: Option<Vec<serde_json::Value>>,
 }
 
-/// OpenAI API streaming chunk
+/// A single chunk from OpenAI's streaming response.
+///
+/// When the SDK requests streaming responses (`stream: true`), the API
+/// returns the response incrementally as a series of chunks. Each chunk
+/// represents a small piece of the complete response, allowing the SDK
+/// to process and display content as it's generated.
+///
+/// # Streaming Architecture
+///
+/// Instead of waiting for the entire response, streaming sends many small
+/// chunks in rapid succession. Each chunk contains:
+/// - Metadata (id, model, timestamp)
+/// - One or more choices (usually just one for single completions)
+/// - Incremental deltas with new content
+///
+/// # Server-Sent Events Format
+///
+/// Chunks are transmitted as Server-Sent Events (SSE) over HTTP:
+/// ```text
+/// data: {"id":"chunk_1","object":"chat.completion.chunk",...}
+/// data: {"id":"chunk_2","object":"chat.completion.chunk",...}
+/// data: [DONE]
+/// ```
+///
+/// # Example Chunk JSON
+///
+/// ```json
+/// {
+///   "id": "chatcmpl-123",
+///   "object": "chat.completion.chunk",
+///   "created": 1677652288,
+///   "model": "gpt-4",
+///   "choices": [{
+///     "index": 0,
+///     "delta": {"content": "Hello"},
+///     "finish_reason": null
+///   }]
+/// }
+/// ```
 #[derive(Debug, Clone, Deserialize)]
 pub struct OpenAIChunk {
+    /// Unique identifier for this completion.
+    ///
+    /// All chunks in a single streaming response share the same ID.
+    /// Not actively used by the SDK but preserved for debugging.
     #[allow(dead_code)]
     pub id: String,
+
+    /// Object type (always "chat.completion.chunk" for streaming).
+    ///
+    /// Not actively used by the SDK but preserved for debugging.
     #[allow(dead_code)]
     pub object: String,
+
+    /// Unix timestamp of when this chunk was created.
+    ///
+    /// Not actively used by the SDK but preserved for debugging.
     #[allow(dead_code)]
     pub created: i64,
+
+    /// Model that generated this chunk.
+    ///
+    /// Not actively used by the SDK but preserved for debugging.
     #[allow(dead_code)]
     pub model: String,
+
+    /// Array of completion choices (usually contains one element).
+    ///
+    /// Each choice represents a possible completion. In normal usage,
+    /// there's only one choice per chunk. This is the critical field
+    /// that the SDK processes to extract content and tool calls.
     pub choices: Vec<OpenAIChoice>,
 }
 
-/// OpenAI choice in streaming response
+/// A single choice/completion option in a streaming chunk.
+///
+/// In streaming responses, each chunk can theoretically contain multiple
+/// choices (parallel completions), but in practice there's usually just one.
+/// Each choice contains a delta with incremental updates and optionally a
+/// finish reason when the generation is complete.
+///
+/// # Delta vs Complete Content
+///
+/// Unlike non-streaming responses that send complete messages, streaming
+/// sends deltas - just the new content added in this chunk. The SDK
+/// accumulates these deltas to build the complete response.
+///
+/// # Finish Reason
+///
+/// - `None`: More content is coming
+/// - `Some("stop")`: Normal completion
+/// - `Some("length")`: Hit max token limit
+/// - `Some("tool_calls")`: Model wants to call tools
+/// - `Some("content_filter")`: Blocked by content policy
 #[derive(Debug, Clone, Deserialize)]
 pub struct OpenAIChoice {
+    /// Index of this choice in the choices array.
+    ///
+    /// Usually 0 since most requests generate a single completion.
+    /// Not actively used by the SDK but preserved for debugging.
     #[allow(dead_code)]
     pub index: u32,
+
+    /// Incremental update/delta for this chunk.
+    ///
+    /// Contains the new content, tool calls, or other updates added in
+    /// this specific chunk. The SDK processes this to update its internal
+    /// state and accumulate the full response.
     pub delta: OpenAIDelta,
+
+    /// Reason why generation finished (None if still generating).
+    ///
+    /// Only present in the final chunk of a stream:
+    /// - `None`: Generation is still in progress
+    /// - `Some("stop")`: Completed normally
+    /// - `Some("length")`: Hit token limit
+    /// - `Some("tool_calls")`: Model requested tools
+    /// - `Some("content_filter")`: Content was filtered
+    ///
+    /// The SDK uses this to detect completion and determine next actions.
     pub finish_reason: Option<String>,
 }
 
-/// OpenAI delta in streaming response
+/// Incremental update in a streaming chunk.
+///
+/// Represents the new content/changes added in this specific chunk.
+/// Unlike complete messages, deltas only contain what's new, not the
+/// entire accumulated content. The SDK accumulates these deltas to
+/// build the complete response.
+///
+/// # Incremental Nature
+///
+/// If the complete response is "Hello, world!", the deltas might be:
+/// 1. `content: Some("Hello")`
+/// 2. `content: Some(", ")`
+/// 3. `content: Some("world")`
+/// 4. `content: Some("!")`
+///
+/// The SDK concatenates these to build the full text.
+///
+/// # Tool Call Deltas
+///
+/// Tool calls are also streamed incrementally. The first delta might
+/// include the tool ID and name, while subsequent deltas stream the
+/// arguments JSON string piece by piece.
 #[derive(Debug, Clone, Deserialize)]
 pub struct OpenAIDelta {
+    /// Role of the message (only in first chunk).
+    ///
+    /// Typically "assistant". Only appears in the first delta of a response
+    /// to establish who's speaking. Subsequent deltas omit this field.
+    /// Not actively used by the SDK but preserved for completeness.
     #[allow(dead_code)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub role: Option<String>,
+
+    /// Incremental text content added in this chunk.
+    ///
+    /// Contains the new text tokens generated. `None` if this chunk doesn't
+    /// add text (e.g., it might only have tool call updates). The SDK
+    /// concatenates these across chunks to build the complete response.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
+
+    /// Incremental tool call updates added in this chunk.
+    ///
+    /// When the model wants to call tools, tool call information is streamed
+    /// incrementally. Each delta might add to different parts of the tool
+    /// call (ID, name, arguments). The SDK accumulates these to reconstruct
+    /// complete tool calls.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_calls: Option<Vec<OpenAIToolCallDelta>>,
 }
 
-/// OpenAI tool call delta
+/// Incremental update for a tool call in streaming.
+///
+/// Tool calls are streamed piece-by-piece, with different chunks potentially
+/// updating different parts. The SDK must accumulate these deltas to
+/// reconstruct complete tool calls.
+///
+/// # Streaming Pattern
+///
+/// A complete tool call is typically streamed as:
+/// 1. First chunk: `index: 0, id: Some("call_123"), type: Some("function")`
+/// 2. Second chunk: `index: 0, function: Some(FunctionDelta { name: Some("search"), ... })`
+/// 3. Multiple chunks: `index: 0, function: Some(FunctionDelta { arguments: Some("part") })`
+///
+/// The SDK uses the `index` to know which tool call to update, as multiple
+/// tool calls can be streamed simultaneously.
+///
+/// # Index-Based Accumulation
+///
+/// The `index` field is crucial for tracking which tool call is being updated.
+/// When the model calls multiple tools, each has a different index, and deltas
+/// specify which one they're updating.
 #[derive(Debug, Clone, Deserialize)]
 pub struct OpenAIToolCallDelta {
+    /// Index identifying which tool call this delta updates.
+    ///
+    /// When multiple tools are called, each has an index (0, 1, 2, ...).
+    /// The SDK uses this to route delta updates to the correct tool call
+    /// in its accumulation buffer.
     pub index: u32,
+
+    /// Tool call ID (only in first delta for this tool call).
+    ///
+    /// Generated by the model. Present in the first chunk for each tool
+    /// call, then omitted in subsequent chunks. The SDK stores this to
+    /// correlate results later.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
+
+    /// Type of call (always "function" when present).
+    ///
+    /// Only appears in the first delta for each tool call. Subsequent
+    /// deltas omit this field. Not actively used by the SDK but preserved
+    /// for completeness.
     #[allow(dead_code)]
     #[serde(skip_serializing_if = "Option::is_none", rename = "type")]
     pub call_type: Option<String>,
+
+    /// Incremental function details (name and/or arguments).
+    ///
+    /// Contains partial updates to the function name and arguments.
+    /// The SDK accumulates these across chunks to build the complete
+    /// function call specification.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub function: Option<OpenAIFunctionDelta>,
 }
 
-/// OpenAI function delta
+/// Incremental update for function details in streaming tool calls.
+///
+/// As the model streams a tool call, the function name and arguments are
+/// sent incrementally. The name usually comes first in one chunk, then
+/// arguments are streamed piece-by-piece as a JSON string.
+///
+/// # Arguments Streaming
+///
+/// The arguments field is particularly important to understand. It contains
+/// **fragments of a JSON string** that must be accumulated and then parsed:
+///
+/// 1. Chunk 1: `arguments: Some("{")`
+/// 2. Chunk 2: `arguments: Some("\"query\":")`
+/// 3. Chunk 3: `arguments: Some("\"hello\"")`
+/// 4. Chunk 4: `arguments: Some("}")`
+///
+/// The SDK concatenates these into `"{\"query\":\"hello\"}"` and then
+/// parses it as JSON.
 #[derive(Debug, Clone, Deserialize)]
 pub struct OpenAIFunctionDelta {
+    /// Function/tool name (only in first delta for this function).
+    ///
+    /// Present when the model first starts calling this function, then
+    /// omitted in subsequent chunks. The SDK stores this to know which
+    /// tool to execute.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+
+    /// Incremental fragment of the arguments JSON string.
+    ///
+    /// Contains a piece of the complete JSON arguments string. The SDK
+    /// must concatenate all argument fragments across chunks, then parse
+    /// the complete string as JSON to get the actual parameters.
+    ///
+    /// For example, if the complete arguments should be:
+    /// `{"x": 1, "y": 2}`
+    ///
+    /// This might be streamed as:
+    /// - `Some("{\"x\": ")`
+    /// - `Some("1, \"y\": ")`
+    /// - `Some("2}")`
     #[serde(skip_serializing_if = "Option::is_none")]
     pub arguments: Option<String>,
 }
