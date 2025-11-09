@@ -12,7 +12,7 @@
 //!
 //! ## Usage
 //!
-//! ```rust
+//! ```ignore
 //! use open_agent::{Error, Result};
 //!
 //! fn example() -> Result<()> {

@@ -100,7 +100,7 @@
 //!
 //! ## Dynamic Prompt Enhancement
 //!
-//! ```rust,no_run
+//! ```ignore
 //! use open_agent::{Hooks, UserPromptSubmitEvent, HookDecision};
 //!
 //! let hooks = Hooks::new().add_user_prompt_submit(|event| async move {

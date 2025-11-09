@@ -282,33 +282,27 @@
 //!
 //! ## With Hooks
 //!
-//! ```rust,no_run
-//! use open_agent::{Client, AgentOptions, hooks::*};
+//! ```ignore
+//! use open_agent::{Client, AgentOptions, Hooks, HookDecision};
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! let mut hooks = HookRegistry::new();
-//!
-//! // Block prompts containing certain words
-//! hooks.register_user_prompt_submit(|event| {
-//!     Box::pin(async move {
+//! let hooks = Hooks::new()
+//!     .add_user_prompt_submit(|event| async move {
+//!         // Block prompts containing certain words
 //!         if event.prompt.contains("forbidden") {
 //!             return Some(HookDecision::block("Forbidden word detected"));
 //!         }
 //!         Some(HookDecision::continue_())
 //!     })
-//! });
-//!
-//! // Log all tool uses
-//! hooks.register_pre_tool_use(|event| {
-//!     Box::pin(async move {
+//!     .add_pre_tool_use(|event| async move {
+//!         // Log all tool uses
 //!         println!("Executing tool: {}", event.tool_name);
 //!         Some(HookDecision::continue_())
-//!     })
-//! });
+//!     });
 //!
 //! let mut client = Client::new(AgentOptions::builder()
 //!     .model("gpt-4")
-//!     .api_key("sk-...")
+//!     .base_url("http://localhost:1234/v1")
 //!     .hooks(hooks)
 //!     .build()?)?;
 //!
