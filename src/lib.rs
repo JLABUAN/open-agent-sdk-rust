@@ -193,8 +193,8 @@ pub use tools::{Tool, ToolBuilder, tool};
 // --- Core Types ---
 
 pub use types::{
-    AgentOptions, AgentOptionsBuilder, ContentBlock, Message, MessageRole, TextBlock,
-    ToolResultBlock, ToolUseBlock,
+    AgentOptions, AgentOptionsBuilder, BaseUrl, ContentBlock, Message, MessageRole, ModelName,
+    Temperature, TextBlock, ToolResultBlock, ToolUseBlock,
 };
 
 // ============================================================================
@@ -213,8 +213,8 @@ pub use types::{
 /// - Errors: Error, Result
 pub mod prelude {
     pub use crate::{
-        AgentOptions, AgentOptionsBuilder, Client, ContentBlock, Error, HookDecision, Hooks,
-        PostToolUseEvent, PreToolUseEvent, Result, TextBlock, Tool, ToolUseBlock,
-        UserPromptSubmitEvent, query, tool,
+        AgentOptions, AgentOptionsBuilder, BaseUrl, Client, ContentBlock, Error, HookDecision,
+        Hooks, ModelName, PostToolUseEvent, PreToolUseEvent, Result, Temperature, TextBlock,
+        Tool, ToolUseBlock, UserPromptSubmitEvent, query, tool,
     };
 }
