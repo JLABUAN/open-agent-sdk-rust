@@ -62,7 +62,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut client = Client::new(options)?;
 
     println!("Client created with auto_execute_tools enabled");
-    println!("Attempting to send a query (this will fail without a running server, but shows the fix)...\n");
+    println!(
+        "Attempting to send a query (this will fail without a running server, but shows the fix)...\n"
+    );
 
     // Try to send a query - this will fail without a server, but the debug logs
     // will show that tool calls and results are now properly serialized
@@ -79,7 +81,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         println!("✓ Received text block: {}", text.text);
                     }
                     ContentBlock::ToolUse(tool_use) => {
-                        println!("✓ Received tool use: {} (id: {})", tool_use.name, tool_use.id);
+                        println!(
+                            "✓ Received tool use: {} (id: {})",
+                            tool_use.name, tool_use.id
+                        );
                     }
                     ContentBlock::ToolResult(result) => {
                         println!("✓ Received tool result for: {}", result.tool_use_id);
@@ -89,7 +94,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             println!("\n✓ Test completed successfully!");
             println!("  Total blocks received: {}", block_count);
-            println!("  Check the debug logs above to verify tool_calls and tool_call_id are populated");
+            println!(
+                "  Check the debug logs above to verify tool_calls and tool_call_id are populated"
+            );
         }
         Err(e) => {
             println!("✗ Expected error (no server running): {}", e);

@@ -313,8 +313,8 @@
 //! ```
 
 use crate::types::{
-    AgentOptions, ContentBlock, Message, MessageRole, OpenAIFunction, OpenAIMessage,
-    OpenAIRequest, OpenAIToolCall, TextBlock,
+    AgentOptions, ContentBlock, Message, MessageRole, OpenAIFunction, OpenAIMessage, OpenAIRequest,
+    OpenAIToolCall, TextBlock,
 };
 use crate::utils::{ToolCallAggregator, parse_sse_stream};
 use crate::{Error, Result};
@@ -1120,10 +1120,9 @@ impl Client {
             if !tool_result_blocks.is_empty() {
                 for tool_result in tool_result_blocks {
                     // Serialize the tool result content as JSON string
-                    let content = serde_json::to_string(&tool_result.content)
-                        .unwrap_or_else(|e| {
-                            format!("{{\"error\": \"Failed to serialize: {}\"}}", e)
-                        });
+                    let content = serde_json::to_string(&tool_result.content).unwrap_or_else(|e| {
+                        format!("{{\"error\": \"Failed to serialize: {}\"}}", e)
+                    });
 
                     messages.push(OpenAIMessage {
                         role: "tool".to_string(),
