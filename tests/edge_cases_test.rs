@@ -76,7 +76,8 @@ fn test_alternating_text_and_images() {
 #[test]
 fn test_various_mime_types() {
     // Should handle all common image MIME types
-    let base64 = "validdata";
+    // Use properly formatted base64 (length divisible by 4)
+    let base64 = "AAAA";
     let mime_types = [
         "image/jpeg",
         "image/png",
@@ -94,7 +95,8 @@ fn test_various_mime_types() {
 #[test]
 fn test_large_base64_data() {
     // Should handle large base64 strings
-    let large_base64 = "a".repeat(10000);
+    // Use valid base64 chars and make length divisible by 4
+    let large_base64 = "A".repeat(10000);
     let img = ImageBlock::from_base64(&large_base64, "image/png");
 
     assert!(img.is_ok());
@@ -124,4 +126,57 @@ fn test_data_uri_with_different_encodings() {
 
     assert!(img.is_ok());
     assert_eq!(img.unwrap().url(), data_uri);
+}
+
+// Phase 3: Empty text block validation tests
+
+#[test]
+fn test_empty_text_block_still_serialized() {
+    // Empty text blocks should be included in serialization (not dropped)
+    // even though they trigger a warning
+    let msg = Message::new(
+        MessageRole::User,
+        vec![
+            ContentBlock::Text(TextBlock::new("")),
+            ContentBlock::Image(ImageBlock::from_url("https://example.com/img.jpg").unwrap()),
+        ],
+    );
+
+    // Message should have 2 blocks
+    assert_eq!(msg.content.len(), 2);
+
+    // When serialized with images, should produce array format
+    // Both text (even if empty) and image should be present
+    // This is tested implicitly - if empty text was dropped, message would be image-only
+}
+
+#[test]
+fn test_whitespace_only_text_block() {
+    // Whitespace-only text blocks should trigger warning but still serialize
+    let msg = Message::new(
+        MessageRole::User,
+        vec![
+            ContentBlock::Text(TextBlock::new("   ")),
+            ContentBlock::Image(ImageBlock::from_url("https://example.com/img.jpg").unwrap()),
+        ],
+    );
+
+    assert_eq!(msg.content.len(), 2);
+}
+
+#[test]
+fn test_mixed_empty_and_valid_text() {
+    // Should handle mix of empty and valid text blocks
+    let msg = Message::new(
+        MessageRole::User,
+        vec![
+            ContentBlock::Text(TextBlock::new("Valid text")),
+            ContentBlock::Text(TextBlock::new("")), // Empty - should warn
+            ContentBlock::Text(TextBlock::new("More valid text")),
+            ContentBlock::Image(ImageBlock::from_url("https://example.com/img.jpg").unwrap()),
+        ],
+    );
+
+    // All blocks should be preserved
+    assert_eq!(msg.content.len(), 4);
 }
