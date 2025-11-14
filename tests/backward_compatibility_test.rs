@@ -4,6 +4,8 @@
 //! new v0.6.0 image functionality uses array format without breaking
 //! existing behavior.
 
+#![allow(deprecated)]
+
 use open_agent::{ContentBlock, Message, MessageRole, OpenAIContent, TextBlock};
 
 #[test]

@@ -1530,6 +1530,13 @@ impl ImageBlock {
                 let base64_data = &url[base64_start_pos + 8..]; // Skip ";base64,"
 
                 // Validate base64 data using same rules as from_base64()
+                // Check data is not empty
+                if base64_data.is_empty() {
+                    return Err(crate::Error::invalid_input(
+                        "Data URI base64 data cannot be empty",
+                    ));
+                }
+
                 // Check character set
                 if !base64_data
                     .chars()
@@ -1553,6 +1560,15 @@ impl ImageBlock {
                     return Err(crate::Error::invalid_input(
                         "Data URI base64 data has invalid padding (max 2 '=' characters allowed)",
                     ));
+                }
+                // Padding must be at the end
+                if equals_count > 0 {
+                    let trimmed = base64_data.trim_end_matches('=');
+                    if trimmed.len() + equals_count != base64_data.len() {
+                        return Err(crate::Error::invalid_input(
+                            "Data URI base64 padding characters must be at the end",
+                        ));
+                    }
                 }
             }
 
@@ -3081,6 +3097,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn test_openai_content_parts_format() {
         // Should serialize mixed content as array
         let parts = vec![
@@ -3116,6 +3133,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn test_openai_content_part_image_serialization() {
         // RED: Test that image_url variant serializes correctly with enum
         let part = OpenAIContentPart::image_url("https://example.com/img.jpg", ImageDetail::Low);
@@ -3130,6 +3148,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn test_openai_content_part_enum_exhaustiveness() {
         // RED: Test that enum prevents invalid states
         // With tagged enum, it should be impossible to create a part with both text and image_url
@@ -3278,9 +3297,12 @@ mod tests {
     fn test_from_url_validates_data_uri_base64() {
         // Should validate base64 portion of data URIs
         let invalid_data_uris = [
+            "data:image/png;base64,",            // empty base64
             "data:image/png;base64,hello world", // spaces in base64
             "data:image/png;base64,@@@",         // invalid chars
             "data:image/png;base64,ABC",         // invalid length (not divisible by 4)
+            "data:image/png;base64,==abc",       // padding in middle (not at end)
+            "data:image/png;base64,ab==cd",      // padding in middle
         ];
 
         for uri in &invalid_data_uris {

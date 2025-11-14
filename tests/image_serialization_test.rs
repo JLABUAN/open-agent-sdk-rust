@@ -3,6 +3,8 @@
 //! Tests that OpenAIMessage and OpenAIContent properly serialize messages
 //! containing images to the OpenAI Vision API format with array content structure.
 
+#![allow(deprecated)]
+
 use open_agent::{
     ContentBlock, ImageBlock, ImageDetail, Message, MessageRole, OpenAIContent, OpenAIContentPart,
     TextBlock,
