@@ -445,7 +445,9 @@ pub type ContentStream = Pin<Box<dyn Stream<Item = Result<ContentBlock>> + Send>
 ///             open_agent::ContentBlock::Text(text) => {
 ///                 print!("{}", text.text);
 ///             }
-///             ContentBlock::ToolUse(_) | ContentBlock::ToolResult(_) => {}
+///             open_agent::ContentBlock::ToolUse(_)
+///             | open_agent::ContentBlock::ToolResult(_)
+///             | open_agent::ContentBlock::Image(_) => {}
 ///         }
 ///     }
 ///
@@ -484,7 +486,7 @@ pub type ContentStream = Pin<Box<dyn Stream<Item = Result<ContentBlock>> + Send>
 ///             // the conversation. For automatic execution, use Client.
 ///         }
 ///         ContentBlock::Text(text) => print!("{}", text.text),
-///         ContentBlock::ToolUse(_) | ContentBlock::ToolResult(_) => {}
+///         ContentBlock::ToolResult(_) | ContentBlock::Image(_) => {}
 ///     }
 /// }
 /// # Ok(())
@@ -757,7 +759,7 @@ pub async fn query(prompt: &str, options: &AgentOptions) -> Result<ContentStream
 ///         ContentBlock::Text(text) => {
 ///             println!("{}", text.text); // "The result is 4."
 ///         }
-///         ContentBlock::ToolUse(_) | ContentBlock::ToolResult(_) => {}
+///         ContentBlock::ToolResult(_) | ContentBlock::Image(_) => {}
 ///     }
 /// }
 /// # Ok(())
@@ -1757,7 +1759,7 @@ impl Client {
     /// while let Some(block) = client.receive().await? {
     ///     match block {
     ///         ContentBlock::Text(text) => print!("{}", text.text),
-    ///         ContentBlock::ToolUse(_) | ContentBlock::ToolResult(_) => {}
+    ///         ContentBlock::ToolUse(_) | ContentBlock::ToolResult(_) | ContentBlock::Image(_) => {}
     ///     }
     /// }
     /// # Ok(())
@@ -1788,7 +1790,7 @@ impl Client {
     ///             client.add_tool_result(&tool_use.id, result)?;
     ///             client.send("").await?;
     ///         }
-    ///         ContentBlock::ToolUse(_) | ContentBlock::ToolResult(_) => {}
+    ///         ContentBlock::ToolResult(_) | ContentBlock::Image(_) => {}
     ///     }
     /// }
     /// # Ok(())
@@ -2220,7 +2222,7 @@ impl Client {
     ///         ContentBlock::Text(text) => {
     ///             println!("{}", text.text);
     ///         }
-    ///         ContentBlock::ToolUse(_) | ContentBlock::ToolResult(_) => {}
+    ///         ContentBlock::ToolResult(_) | ContentBlock::Image(_) => {}
     ///     }
     /// }
     /// # Ok(())

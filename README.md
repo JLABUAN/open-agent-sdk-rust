@@ -254,11 +254,13 @@ let msg = Message::user_with_image_detail(
 
 ### Token Cost Management
 
-Images consume tokens based on detail level:
+Control image processing costs using `ImageDetail` levels (based on GPT-4o):
 
-- **`ImageDetail::Low`** - Fixed ~85 tokens, 512x512 max (cost-effective for OCR, object detection)
-- **`ImageDetail::High`** - Variable tokens based on dimensions (detailed analysis, fine text)
+- **`ImageDetail::Low`** - Fixed ~85 tokens on GPT-4o (cost-effective for OCR, object detection)
+- **`ImageDetail::High`** - Variable tokens on GPT-4o based on dimensions (detailed analysis, fine text)
 - **`ImageDetail::Auto`** - Model decides (balanced default)
+
+**Note:** Local models (llama.cpp, Ollama) may have different token costs.
 
 ### Complex Multi-Image Messages
 

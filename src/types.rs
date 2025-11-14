@@ -1342,12 +1342,17 @@ impl ToolResultBlock {
 /// Image detail level for vision API calls.
 ///
 /// Controls the resolution and token cost of image processing.
+/// Token costs are based on GPT-4o and may differ for local models
+/// (llama.cpp, Ollama, vLLM).
 ///
-/// # Token Costs (gpt-4o)
+/// # Token Costs (GPT-4o)
 ///
-/// - `Low`: Fixed 85 tokens, 512x512 resolution
-/// - `High`: Variable tokens based on dimensions (170 tokens per 512px tile + 85 base)
-/// - `Auto`: Model decides based on image characteristics (default)
+/// - `Low`: Fixed ~85 tokens on GPT-4o, 512x512 resolution (cost-effective)
+/// - `High`: Variable tokens on GPT-4o based on dimensions (170 tokens per 512px tile + 85 base, for detailed analysis)
+/// - `Auto`: Model decides based on image characteristics (balanced default)
+///
+/// **Note:** Local models may have different token costs. These values are
+/// approximations based on GPT-4o's Vision API.
 ///
 /// # Examples
 ///
@@ -1390,14 +1395,15 @@ impl std::fmt::Display for ImageDetail {
 /// use open_agent::{ImageBlock, ImageDetail};
 ///
 /// // From URL
-/// let image = ImageBlock::from_url("https://example.com/image.jpg");
+/// let image = ImageBlock::from_url("https://example.com/image.jpg")?;
 ///
 /// // From base64
-/// let image = ImageBlock::from_base64("iVBORw0KGgo...", "image/png");
+/// let image = ImageBlock::from_base64("iVBORw0KGgo...", "image/png")?;
 ///
 /// // With detail level
-/// let image = ImageBlock::from_url("https://example.com/image.jpg")
+/// let image = ImageBlock::from_url("https://example.com/image.jpg")?
 ///     .with_detail(ImageDetail::High);
+/// # Ok::<(), open_agent::Error>(())
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImageBlock {
@@ -1541,8 +1547,9 @@ impl ImageBlock {
     /// ```
     /// use open_agent::{ImageBlock, ImageDetail};
     ///
-    /// let image = ImageBlock::from_url("https://example.com/image.jpg")
+    /// let image = ImageBlock::from_url("https://example.com/image.jpg")?
     ///     .with_detail(ImageDetail::High);
+    /// # Ok::<(), open_agent::Error>(())
     /// ```
     pub fn with_detail(mut self, detail: ImageDetail) -> Self {
         self.detail = detail;
@@ -1767,9 +1774,9 @@ impl Message {
     /// Creates a user message with text and an image with specified detail level.
     ///
     /// Use this when you need control over the image detail level for token cost
-    /// management. `ImageDetail::Low` uses ~85 tokens, `ImageDetail::High` uses
-    /// more tokens based on image dimensions, and `ImageDetail::Auto` lets the
-    /// model decide.
+    /// management. On GPT-4o: `ImageDetail::Low` uses ~85 tokens, `ImageDetail::High`
+    /// uses more tokens based on image dimensions, and `ImageDetail::Auto` lets the
+    /// model decide. Local models may have different token costs.
     ///
     /// # Arguments
     ///
@@ -1915,7 +1922,7 @@ impl OpenAIContentPart {
     /// # Example
     ///
     /// ```
-    /// use open_agent::types::OpenAIContentPart;
+    /// use open_agent::OpenAIContentPart;
     ///
     /// let part = OpenAIContentPart::text("Hello world");
     /// ```
@@ -1928,7 +1935,7 @@ impl OpenAIContentPart {
     /// # Example
     ///
     /// ```
-    /// use open_agent::{types::OpenAIContentPart, ImageDetail};
+    /// use open_agent::{OpenAIContentPart, ImageDetail};
     ///
     /// let part = OpenAIContentPart::image_url("https://example.com/img.jpg", ImageDetail::High);
     /// ```

@@ -86,16 +86,18 @@
 //!     // First turn
 //!     client.send("What's 2+2?").await?;
 //!     while let Some(block) = client.receive().await? {
-//!         if let ContentBlock::Text(text) = block {
-//!             print!("{}", text.text);
+//!         match block {
+//!             ContentBlock::Text(text) => print!("{}", text.text),
+//!             ContentBlock::ToolUse(_) | ContentBlock::ToolResult(_) | ContentBlock::Image(_) => {}
 //!         }
 //!     }
 //!
 //!     // Second turn - client remembers previous context
 //!     client.send("What about if we multiply that by 3?").await?;
 //!     while let Some(block) = client.receive().await? {
-//!         if let ContentBlock::Text(text) = block {
-//!             print!("{}", text.text);
+//!         match block {
+//!             ContentBlock::Text(text) => print!("{}", text.text),
+//!             ContentBlock::ToolUse(_) | ContentBlock::ToolResult(_) | ContentBlock::Image(_) => {}
 //!         }
 //!     }
 //!
