@@ -37,8 +37,8 @@ async fn test_assistant_tool_call_without_text_has_content() {
 
     match &history_msg.content[0] {
         ContentBlock::ToolUse(tool) => {
-            assert_eq!(tool.name, "test_function");
-            assert_eq!(tool.id, "call_123");
+            assert_eq!(tool.name(), "test_function");
+            assert_eq!(tool.id(), "call_123");
         }
         _ => panic!("Expected ToolUse block"),
     }
@@ -86,7 +86,7 @@ async fn test_assistant_tool_call_with_text_has_content() {
     // Second block should be tool use
     match &client.history()[0].content[1] {
         ContentBlock::ToolUse(tool) => {
-            assert_eq!(tool.name, "another_function");
+            assert_eq!(tool.name(), "another_function");
         }
         _ => panic!("Expected ToolUse block"),
     }

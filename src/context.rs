@@ -106,14 +106,14 @@ pub fn estimate_tokens(messages: &[Message]) -> usize {
                 }
                 crate::types::ContentBlock::ToolUse(tool) => {
                     // Tool calls add significant overhead
-                    total_chars += tool.name.len();
-                    total_chars += tool.id.len();
-                    total_chars += tool.input.to_string().len();
+                    total_chars += tool.name().len();
+                    total_chars += tool.id().len();
+                    total_chars += tool.input().to_string().len();
                 }
                 crate::types::ContentBlock::ToolResult(result) => {
                     // Tool results add overhead
-                    total_chars += result.tool_use_id.len();
-                    total_chars += result.content.to_string().len();
+                    total_chars += result.tool_use_id().len();
+                    total_chars += result.content().to_string().len();
                 }
             }
         }

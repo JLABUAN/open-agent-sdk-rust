@@ -99,17 +99,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
                 ContentBlock::ToolUse(tool_use) => {
-                    println!("🔧 Tool call: {}", tool_use.name);
-                    println!("   Arguments: {}", tool_use.input);
+                    println!("🔧 Tool call: {}", tool_use.name());
+                    println!("   Arguments: {}", tool_use.input());
 
                     // Look up and execute tool
-                    if let Some(tool) = tool_registry.get(&tool_use.name) {
-                        match tool.execute(tool_use.input.clone()).await {
+                    if let Some(tool) = tool_registry.get(tool_use.name()) {
+                        match tool.execute(tool_use.input().clone()).await {
                             Ok(result) => {
                                 println!("   Result: {}", result);
 
                                 // Add result to conversation
-                                client.add_tool_result(&tool_use.id, result)?;
+                                client.add_tool_result(tool_use.id(), result)?;
 
                                 // Continue conversation to get assistant's response
                                 client.send("").await?;
@@ -119,7 +119,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                         }
                     } else {
-                        eprintln!("   Tool not found: {}", tool_use.name);
+                        eprintln!("   Tool not found: {}", tool_use.name());
                     }
                 }
                 ContentBlock::ToolResult(_) => {

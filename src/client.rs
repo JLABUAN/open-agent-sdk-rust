@@ -226,14 +226,14 @@
 //! while let Some(block) = client.receive().await? {
 //!     match block {
 //!         ContentBlock::ToolUse(tool_use) => {
-//!             println!("Model wants to use: {}", tool_use.name);
+//!             println!("Model wants to use: {}", tool_use.name());
 //!
 //!             // Execute tool manually
-//!             let tool = client.get_tool(&tool_use.name).unwrap();
-//!             let result = tool.execute(tool_use.input).await?;
+//!             let tool = client.get_tool(tool_use.name()).unwrap();
+//!             let result = tool.execute(tool_use.input().clone()).await?;
 //!
 //!             // Add result and continue
-//!             client.add_tool_result(&tool_use.id, result)?;
+//!             client.add_tool_result(tool_use.id(), result)?;
 //!             client.send("").await?;
 //!         }
 //!         ContentBlock::Text(text) => {
@@ -481,7 +481,7 @@ pub type ContentStream = Pin<Box<dyn Stream<Item = Result<ContentBlock>> + Send>
 /// while let Some(block) = stream.next().await {
 ///     match block? {
 ///         ContentBlock::ToolUse(tool_use) => {
-///             println!("Model wants to use: {}", tool_use.name);
+///             println!("Model wants to use: {}", tool_use.name());
 ///             // Note: You'll need to manually execute tools and continue
 ///             // the conversation. For automatic execution, use Client.
 ///         }
@@ -751,7 +751,7 @@ pub async fn query(prompt: &str, options: &AgentOptions) -> Result<ContentStream
 ///         ContentBlock::ToolUse(tool_use) => {
 ///             // Execute tool manually
 ///             let result = json!({"result": 4});
-///             client.add_tool_result(&tool_use.id, result)?;
+///             client.add_tool_result(tool_use.id(), result)?;
 ///
 ///             // Continue conversation to get model's response
 ///             client.send("").await?;
@@ -1037,7 +1037,7 @@ impl Client {
     /// while let Some(block) = client.receive().await? {
     ///     if let ContentBlock::ToolUse(tool_use) = block {
     ///         // Execute tool and add result
-    ///         client.add_tool_result(&tool_use.id, json!({"result": 42}))?;
+    ///         client.add_tool_result(tool_use.id(), json!({"result": 42}))?;
     ///
     ///         // Continue conversation with empty prompt
     ///         client.send("").await?;
@@ -1126,7 +1126,7 @@ impl Client {
             if !tool_result_blocks.is_empty() {
                 for tool_result in tool_result_blocks {
                     // Serialize the tool result content as JSON string
-                    let content = serde_json::to_string(&tool_result.content).unwrap_or_else(|e| {
+                    let content = serde_json::to_string(tool_result.content()).unwrap_or_else(|e| {
                         format!("{{\"error\": \"Failed to serialize: {}\"}}", e)
                     });
 
@@ -1134,7 +1134,7 @@ impl Client {
                         role: "tool".to_string(),
                         content: Some(OpenAIContent::Text(content)),
                         tool_calls: None,
-                        tool_call_id: Some(tool_result.tool_use_id.clone()),
+                        tool_call_id: Some(tool_result.tool_use_id().to_string()),
                     });
                 }
             }
@@ -1145,14 +1145,14 @@ impl Client {
                     .iter()
                     .map(|tool_use| {
                         // Serialize the input as a JSON string (OpenAI API requirement)
-                        let arguments = serde_json::to_string(&tool_use.input)
+                        let arguments = serde_json::to_string(tool_use.input())
                             .unwrap_or_else(|_| "{}".to_string());
 
                         OpenAIToolCall {
-                            id: tool_use.id.clone(),
+                            id: tool_use.id().to_string(),
                             call_type: "function".to_string(),
                             function: OpenAIFunction {
-                                name: tool_use.name.clone(),
+                                name: tool_use.name().to_string(),
                                 arguments,
                             },
                         }
@@ -1609,14 +1609,14 @@ impl Client {
                     // ============================================================
                     use crate::hooks::PreToolUseEvent;
                     let pre_event = PreToolUseEvent::new(
-                        tool_use.name.clone(),
-                        tool_use.input.clone(),
-                        tool_use.id.clone(),
+                        tool_use.name().to_string(),
+                        tool_use.input().clone(),
+                        tool_use.id().to_string(),
                         history_snapshot.clone(),
                     );
 
                     // Track whether to execute and what input to use
-                    let mut tool_input = tool_use.input.clone();
+                    let mut tool_input = tool_use.input().clone();
                     let mut should_execute = true;
                     let mut block_reason = None;
 
@@ -1640,7 +1640,7 @@ impl Client {
                     let result = if should_execute {
                         // Actually execute the tool
                         match self
-                            .execute_tool_internal(&tool_use.name, tool_input.clone())
+                            .execute_tool_internal(tool_use.name(), tool_input.clone())
                             .await
                         {
                             Ok(res) => res, // Success - use the result
@@ -1649,8 +1649,8 @@ impl Client {
                                 // This allows the conversation to continue
                                 serde_json::json!({
                                     "error": e.to_string(),
-                                    "tool": tool_use.name,
-                                    "id": tool_use.id
+                                    "tool": tool_use.name(),
+                                    "id": tool_use.id()
                                 })
                             }
                         }
@@ -1659,8 +1659,8 @@ impl Client {
                         serde_json::json!({
                             "error": "Tool execution blocked by hook",
                             "reason": block_reason.unwrap_or_else(|| "No reason provided".to_string()),
-                            "tool": tool_use.name,
-                            "id": tool_use.id
+                            "tool": tool_use.name(),
+                            "id": tool_use.id()
                         })
                     };
 
@@ -1669,9 +1669,9 @@ impl Client {
                     // ============================================================
                     use crate::hooks::PostToolUseEvent;
                     let post_event = PostToolUseEvent::new(
-                        tool_use.name.clone(),
+                        tool_use.name().to_string(),
                         tool_input,
-                        tool_use.id.clone(),
+                        tool_use.id().to_string(),
                         result.clone(),
                         history_snapshot,
                     );
@@ -1691,7 +1691,7 @@ impl Client {
                     // Add tool result to history
                     // ============================================================
                     // Tool results are added as user messages (per OpenAI convention)
-                    let tool_result = ToolResultBlock::new(&tool_use.id, final_result);
+                    let tool_result = ToolResultBlock::new(tool_use.id(), final_result);
                     let tool_result_msg =
                         Message::user_with_blocks(vec![ContentBlock::ToolResult(tool_result)]);
                     self.history.push(tool_result_msg);
@@ -1803,13 +1803,13 @@ impl Client {
     ///             println!("{}", text.text);
     ///         }
     ///         ContentBlock::ToolUse(tool_use) => {
-    ///             println!("Executing: {}", tool_use.name);
+    ///             println!("Executing: {}", tool_use.name());
     ///
     ///             // Execute tool manually
     ///             let result = json!({"result": 42});
     ///
     ///             // Add result and continue
-    ///             client.add_tool_result(&tool_use.id, result)?;
+    ///             client.add_tool_result(tool_use.id(), result)?;
     ///             client.send("").await?;
     ///         }
     ///         ContentBlock::ToolResult(_) | ContentBlock::Image(_) => {}
@@ -2236,7 +2236,7 @@ impl Client {
     ///             let result = json!({"result": 42});
     ///
     ///             // Add result to history
-    ///             client.add_tool_result(&tool_use.id, result)?;
+    ///             client.add_tool_result(tool_use.id(), result)?;
     ///
     ///             // Continue conversation to get model's response
     ///             client.send("").await?;
@@ -2263,15 +2263,15 @@ impl Client {
     /// while let Some(block) = client.receive().await? {
     ///     if let ContentBlock::ToolUse(tool_use) = block {
     ///         // Try to execute tool
-    ///         let result = match execute_tool(&tool_use.name, &tool_use.input) {
+    ///         let result = match execute_tool(tool_use.name(), tool_use.input()) {
     ///             Ok(output) => output,
     ///             Err(e) => json!({
     ///                 "error": e.to_string(),
-    ///                 "tool": tool_use.name
+    ///                 "tool": tool_use.name()
     ///             })
     ///         };
     ///
-    ///         client.add_tool_result(&tool_use.id, result)?;
+    ///         client.add_tool_result(tool_use.id(), result)?;
     ///         client.send("").await?;
     ///     }
     /// }
@@ -2305,7 +2305,7 @@ impl Client {
     /// // Execute and add results for all tools
     /// for tool_call in tool_calls {
     ///     let result = json!({"result": 42}); // Execute tool
-    ///     client.add_tool_result(&tool_call.id, result)?;
+    ///     client.add_tool_result(tool_call.id(), result)?;
     /// }
     ///
     /// // Continue conversation
@@ -2322,7 +2322,7 @@ impl Client {
         // Add to history as a tool message
         // Note: ToolResultBlock is properly serialized in build_api_request()
         // as a separate message with role="tool" and tool_call_id set
-        let serialized = serde_json::to_string(&result_block.content)
+        let serialized = serde_json::to_string(result_block.content())
             .map_err(|e| Error::config(format!("Failed to serialize tool result: {}", e)))?;
 
         self.history.push(Message::new(
@@ -2366,13 +2366,13 @@ impl Client {
     /// # client.send("test").await?;
     /// while let Some(block) = client.receive().await? {
     ///     if let ContentBlock::ToolUse(tool_use) = block {
-    ///         if let Some(tool) = client.get_tool(&tool_use.name) {
+    ///         if let Some(tool) = client.get_tool(tool_use.name()) {
     ///             // Execute the tool
-    ///             let result = tool.execute(tool_use.input.clone()).await?;
-    ///             client.add_tool_result(&tool_use.id, result)?;
+    ///             let result = tool.execute(tool_use.input().clone()).await?;
+    ///             client.add_tool_result(tool_use.id(), result)?;
     ///             client.send("").await?;
     ///         } else {
-    ///             println!("Unknown tool: {}", tool_use.name);
+    ///             println!("Unknown tool: {}", tool_use.name());
     ///         }
     ///     }
     /// }

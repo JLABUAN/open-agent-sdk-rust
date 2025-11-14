@@ -595,9 +595,9 @@ mod tests {
 
         match &blocks[0] {
             ContentBlock::ToolUse(tool) => {
-                assert_eq!(tool.id, "call_123");
-                assert_eq!(tool.name, "get_weather");
-                assert_eq!(tool.input["location"], "Paris");
+                assert_eq!(tool.id(), "call_123");
+                assert_eq!(tool.name(), "get_weather");
+                assert_eq!(tool.input()["location"], "Paris");
             }
             _ => panic!("Expected tool use block"),
         }

@@ -259,14 +259,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     // This shouldn't happen in auto-execution mode
                     println!(
                         "⚠️  Unexpected: ToolUse block in auto mode: {}",
-                        tool_use.name
+                        tool_use.name()
                     );
                 }
                 ContentBlock::ToolResult(tool_result) => {
                     // This shouldn't happen in auto-execution mode
                     println!(
                         "⚠️  Unexpected: ToolResult block in auto mode: {}",
-                        tool_result.tool_use_id
+                        tool_result.tool_use_id()
                     );
                 }
                 ContentBlock::Image(_) => {
