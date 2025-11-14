@@ -37,7 +37,8 @@ fn main() {
     let msg1 = Message::user_with_image(
         "What's in this image? Describe it in detail.",
         "https://example.com/photo.jpg",
-    );
+    )
+    .expect("Failed to create message with image");
 
     println!("Created message with {} content blocks", msg1.content.len());
     println!("  - Block 0: Text");
@@ -54,7 +55,8 @@ fn main() {
         "Analyze the fine details in this diagram.",
         "https://example.com/diagram.png",
         ImageDetail::High,
-    );
+    )
+    .expect("Failed to create message with image detail");
 
     println!("Created message with {} content blocks", msg2.content.len());
     println!("  - Block 0: Text");
@@ -70,7 +72,8 @@ fn main() {
     let base64_data = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==";
 
     let msg3 =
-        Message::user_with_base64_image("What color is this pixel?", base64_data, "image/png");
+        Message::user_with_base64_image("What color is this pixel?", base64_data, "image/png")
+            .expect("Failed to create message with base64 image");
 
     println!("Created message with {} content blocks", msg3.content.len());
     if let ContentBlock::Image(img) = &msg3.content[1] {
@@ -86,11 +89,17 @@ fn main() {
     println!("💰 Example 4: Detail level token costs");
     println!("────────────────────────────────────────");
 
-    let _low = ImageBlock::from_url("https://example.com/img.jpg").with_detail(ImageDetail::Low);
+    let _low = ImageBlock::from_url("https://example.com/img.jpg")
+        .expect("Valid URL")
+        .with_detail(ImageDetail::Low);
 
-    let _high = ImageBlock::from_url("https://example.com/img.jpg").with_detail(ImageDetail::High);
+    let _high = ImageBlock::from_url("https://example.com/img.jpg")
+        .expect("Valid URL")
+        .with_detail(ImageDetail::High);
 
-    let _auto = ImageBlock::from_url("https://example.com/img.jpg").with_detail(ImageDetail::Auto);
+    let _auto = ImageBlock::from_url("https://example.com/img.jpg")
+        .expect("Valid URL")
+        .with_detail(ImageDetail::Auto);
 
     println!("ImageDetail::Low  - Fixed ~85 tokens (512x512 max)");
     println!("ImageDetail::High - Variable tokens (based on dimensions)");
@@ -110,16 +119,19 @@ fn main() {
             ContentBlock::Text(TextBlock::new("1. Composition:")),
             ContentBlock::Image(
                 ImageBlock::from_url("https://example.com/photo1.jpg")
+                    .expect("Valid URL")
                     .with_detail(ImageDetail::Low),
             ),
             ContentBlock::Text(TextBlock::new("2. Color palette:")),
             ContentBlock::Image(
                 ImageBlock::from_url("https://example.com/photo2.jpg")
+                    .expect("Valid URL")
                     .with_detail(ImageDetail::Low),
             ),
             ContentBlock::Text(TextBlock::new("3. Lighting:")),
             ContentBlock::Image(
                 ImageBlock::from_url("https://example.com/photo3.jpg")
+                    .expect("Valid URL")
                     .with_detail(ImageDetail::Low),
             ),
         ],

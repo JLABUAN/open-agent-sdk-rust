@@ -1409,18 +1409,71 @@ pub struct ImageBlock {
 impl ImageBlock {
     /// Creates a new image block from a URL.
     ///
+    /// # Arguments
+    ///
+    /// * `url` - The image URL (must be HTTP, HTTPS, or data URI)
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::InvalidInput` if:
+    /// - URL is empty
+    /// - URL scheme is not `http://`, `https://`, or `data:`
+    /// - Data URI is malformed (missing MIME type or base64 encoding)
+    ///
     /// # Example
     ///
     /// ```
     /// use open_agent::ImageBlock;
     ///
-    /// let image = ImageBlock::from_url("https://example.com/cat.jpg");
+    /// let image = ImageBlock::from_url("https://example.com/cat.jpg")?;
     /// assert_eq!(image.url(), "https://example.com/cat.jpg");
+    /// # Ok::<(), open_agent::Error>(())
     /// ```
-    pub fn from_url(url: impl Into<String>) -> Self {
-        Self {
-            url: url.into(),
-            detail: ImageDetail::default(),
+    pub fn from_url(url: impl Into<String>) -> crate::Result<Self> {
+        let url = url.into();
+
+        // Validate URL is not empty
+        if url.is_empty() {
+            return Err(crate::Error::invalid_input("Image URL cannot be empty"));
+        }
+
+        // Validate URL scheme
+        if url.starts_with("http://") || url.starts_with("https://") {
+            // Valid HTTP/HTTPS URL
+            Ok(Self {
+                url,
+                detail: ImageDetail::default(),
+            })
+        } else if let Some(mime_part) = url.strip_prefix("data:") {
+            // Validate data URI format: data:MIME;base64,DATA
+            if !url.contains(";base64,") {
+                return Err(crate::Error::invalid_input(
+                    "Data URI must be in format: data:image/TYPE;base64,DATA",
+                ));
+            }
+
+            // Extract MIME type from data:MIME;base64,DATA
+            if let Some(semicolon_pos) = mime_part.find(';') {
+                let mime_type = &mime_part[..semicolon_pos];
+                if mime_type.is_empty() || !mime_type.starts_with("image/") {
+                    return Err(crate::Error::invalid_input(
+                        "Data URI MIME type must start with 'image/'",
+                    ));
+                }
+            } else {
+                return Err(crate::Error::invalid_input(
+                    "Malformed data URI: missing MIME type",
+                ));
+            }
+
+            Ok(Self {
+                url,
+                detail: ImageDetail::default(),
+            })
+        } else {
+            Err(crate::Error::invalid_input(
+                "Image URL must start with http://, https://, or data:",
+            ))
         }
     }
 
@@ -1431,25 +1484,54 @@ impl ImageBlock {
     /// * `base64_data` - The base64-encoded image data
     /// * `mime_type` - The MIME type (e.g., "image/jpeg", "image/png")
     ///
+    /// # Errors
+    ///
+    /// Returns `Error::InvalidInput` if:
+    /// - Base64 data is empty
+    /// - MIME type is empty
+    /// - MIME type does not start with "image/"
+    ///
     /// # Example
     ///
     /// ```
     /// use open_agent::ImageBlock;
     ///
     /// let base64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
-    /// let image = ImageBlock::from_base64(base64, "image/png");
+    /// let image = ImageBlock::from_base64(base64, "image/png")?;
     /// assert!(image.url().starts_with("data:image/png;base64,"));
+    /// # Ok::<(), open_agent::Error>(())
     /// ```
-    pub fn from_base64(base64_data: impl AsRef<str>, mime_type: impl AsRef<str>) -> Self {
-        let url = format!(
-            "data:{};base64,{}",
-            mime_type.as_ref(),
-            base64_data.as_ref()
-        );
-        Self {
+    pub fn from_base64(
+        base64_data: impl AsRef<str>,
+        mime_type: impl AsRef<str>,
+    ) -> crate::Result<Self> {
+        let data = base64_data.as_ref();
+        let mime = mime_type.as_ref();
+
+        // Validate base64 data is not empty
+        if data.is_empty() {
+            return Err(crate::Error::invalid_input(
+                "Base64 image data cannot be empty",
+            ));
+        }
+
+        // Validate MIME type is not empty
+        if mime.is_empty() {
+            return Err(crate::Error::invalid_input("MIME type cannot be empty"));
+        }
+
+        // Validate MIME type starts with "image/"
+        if !mime.starts_with("image/") {
+            return Err(crate::Error::invalid_input(
+                "MIME type must start with 'image/' (e.g., 'image/png', 'image/jpeg')",
+            ));
+        }
+
+        let url = format!("data:{};base64,{}", mime, data);
+        Ok(Self {
             url,
             detail: ImageDetail::default(),
-        }
+        })
     }
 
     /// Sets the image detail level.
@@ -1654,6 +1736,10 @@ impl Message {
     /// * `text` - The text prompt
     /// * `image_url` - URL of the image (http/https or data URI)
     ///
+    /// # Errors
+    ///
+    /// Returns `Error::InvalidInput` if the image URL is invalid (empty, wrong scheme, etc.)
+    ///
     /// # Example
     ///
     /// ```
@@ -1662,16 +1748,20 @@ impl Message {
     /// let msg = Message::user_with_image(
     ///     "What's in this image?",
     ///     "https://example.com/photo.jpg"
-    /// );
+    /// )?;
+    /// # Ok::<(), open_agent::Error>(())
     /// ```
-    pub fn user_with_image(text: impl Into<String>, image_url: impl Into<String>) -> Self {
-        Self {
+    pub fn user_with_image(
+        text: impl Into<String>,
+        image_url: impl Into<String>,
+    ) -> crate::Result<Self> {
+        Ok(Self {
             role: MessageRole::User,
             content: vec![
                 ContentBlock::Text(TextBlock::new(text)),
-                ContentBlock::Image(ImageBlock::from_url(image_url)),
+                ContentBlock::Image(ImageBlock::from_url(image_url)?),
             ],
-        }
+        })
     }
 
     /// Creates a user message with text and an image with specified detail level.
@@ -1687,6 +1777,10 @@ impl Message {
     /// * `image_url` - URL of the image (http/https or data URI)
     /// * `detail` - Detail level (Low, High, or Auto)
     ///
+    /// # Errors
+    ///
+    /// Returns `Error::InvalidInput` if the image URL is invalid (empty, wrong scheme, etc.)
+    ///
     /// # Example
     ///
     /// ```
@@ -1696,20 +1790,21 @@ impl Message {
     ///     "Analyze this diagram in detail",
     ///     "https://example.com/diagram.png",
     ///     ImageDetail::High
-    /// );
+    /// )?;
+    /// # Ok::<(), open_agent::Error>(())
     /// ```
     pub fn user_with_image_detail(
         text: impl Into<String>,
         image_url: impl Into<String>,
         detail: ImageDetail,
-    ) -> Self {
-        Self {
+    ) -> crate::Result<Self> {
+        Ok(Self {
             role: MessageRole::User,
             content: vec![
                 ContentBlock::Text(TextBlock::new(text)),
-                ContentBlock::Image(ImageBlock::from_url(image_url).with_detail(detail)),
+                ContentBlock::Image(ImageBlock::from_url(image_url)?.with_detail(detail)),
             ],
-        }
+        })
     }
 
     /// Creates a user message with text and a base64-encoded image.
@@ -1723,6 +1818,10 @@ impl Message {
     /// * `base64_data` - Base64-encoded image data
     /// * `mime_type` - MIME type (e.g., "image/png", "image/jpeg")
     ///
+    /// # Errors
+    ///
+    /// Returns `Error::InvalidInput` if the base64 data or MIME type is invalid
+    ///
     /// # Example
     ///
     /// ```
@@ -1733,20 +1832,21 @@ impl Message {
     ///     "What's this image?",
     ///     base64_data,
     ///     "image/png"
-    /// );
+    /// )?;
+    /// # Ok::<(), open_agent::Error>(())
     /// ```
     pub fn user_with_base64_image(
         text: impl Into<String>,
         base64_data: impl AsRef<str>,
         mime_type: impl AsRef<str>,
-    ) -> Self {
-        Self {
+    ) -> crate::Result<Self> {
+        Ok(Self {
             role: MessageRole::User,
             content: vec![
                 ContentBlock::Text(TextBlock::new(text)),
-                ContentBlock::Image(ImageBlock::from_base64(base64_data, mime_type)),
+                ContentBlock::Image(ImageBlock::from_base64(base64_data, mime_type)?),
             ],
-        }
+        })
     }
 }
 
@@ -2383,7 +2483,8 @@ mod tests {
     #[test]
     fn test_message_user_with_image() {
         let msg =
-            Message::user_with_image("What's in this image?", "https://example.com/image.jpg");
+            Message::user_with_image("What's in this image?", "https://example.com/image.jpg")
+                .unwrap();
         assert!(matches!(msg.role, MessageRole::User));
         assert_eq!(msg.content.len(), 2);
 
@@ -2407,7 +2508,8 @@ mod tests {
             "Analyze this in detail",
             "https://example.com/diagram.png",
             ImageDetail::High,
-        );
+        )
+        .unwrap();
         assert!(matches!(msg.role, MessageRole::User));
         assert_eq!(msg.content.len(), 2);
 
@@ -2422,7 +2524,8 @@ mod tests {
     #[test]
     fn test_message_user_with_base64_image() {
         let base64_data = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ";
-        let msg = Message::user_with_base64_image("What's this?", base64_data, "image/png");
+        let msg =
+            Message::user_with_base64_image("What's this?", base64_data, "image/png").unwrap();
         assert!(matches!(msg.role, MessageRole::User));
         assert_eq!(msg.content.len(), 2);
 
@@ -2688,7 +2791,7 @@ mod tests {
     #[test]
     fn test_image_block_from_url() {
         // Should create ImageBlock from URL
-        let block = ImageBlock::from_url("https://example.com/image.jpg");
+        let block = ImageBlock::from_url("https://example.com/image.jpg").unwrap();
         assert_eq!(block.url(), "https://example.com/image.jpg");
         assert!(matches!(block.detail(), ImageDetail::Auto));
     }
@@ -2696,7 +2799,7 @@ mod tests {
     #[test]
     fn test_image_block_from_base64() {
         // Should create ImageBlock from base64
-        let block = ImageBlock::from_base64("abc123", "image/jpeg");
+        let block = ImageBlock::from_base64("abc123", "image/jpeg").unwrap();
         assert!(block.url().starts_with("data:image/jpeg;base64,"));
         assert!(matches!(block.detail(), ImageDetail::Auto));
     }
@@ -2704,8 +2807,9 @@ mod tests {
     #[test]
     fn test_image_block_with_detail() {
         // Should set detail level
-        let block =
-            ImageBlock::from_url("https://example.com/image.jpg").with_detail(ImageDetail::High);
+        let block = ImageBlock::from_url("https://example.com/image.jpg")
+            .unwrap()
+            .with_detail(ImageDetail::High);
         assert!(matches!(block.detail(), ImageDetail::High));
     }
 
@@ -2725,7 +2829,7 @@ mod tests {
     #[test]
     fn test_content_block_image_variant() {
         // Should add Image variant to ContentBlock
-        let image = ImageBlock::from_url("https://example.com/image.jpg");
+        let image = ImageBlock::from_url("https://example.com/image.jpg").unwrap();
         let block = ContentBlock::Image(image);
 
         match block {
@@ -2768,5 +2872,121 @@ mod tests {
         assert_eq!(ImageDetail::Low.to_string(), "low");
         assert_eq!(ImageDetail::High.to_string(), "high");
         assert_eq!(ImageDetail::Auto.to_string(), "auto");
+    }
+
+    // ========================================================================
+    // ImageBlock Validation Tests (Phase 1 - PR #3 Fixes)
+    // ========================================================================
+
+    #[test]
+    fn test_image_block_from_url_rejects_empty() {
+        // Should reject empty URL strings
+        let result = ImageBlock::from_url("");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("empty"));
+    }
+
+    #[test]
+    fn test_image_block_from_url_rejects_invalid_scheme() {
+        // Should reject non-HTTP/HTTPS/data schemes
+        let result = ImageBlock::from_url("ftp://example.com/image.jpg");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("scheme") || err.to_string().contains("http"));
+    }
+
+    #[test]
+    fn test_image_block_from_url_rejects_relative_path() {
+        // Should reject relative paths
+        let result = ImageBlock::from_url("/images/photo.jpg");
+        assert!(result.is_err());
+        // Error message should mention URL requirements
+        assert!(matches!(result.unwrap_err(), crate::Error::InvalidInput(_)));
+    }
+
+    #[test]
+    fn test_image_block_from_url_accepts_http() {
+        // Should accept HTTP URLs
+        let result = ImageBlock::from_url("http://example.com/image.jpg");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().url(), "http://example.com/image.jpg");
+    }
+
+    #[test]
+    fn test_image_block_from_url_accepts_https() {
+        // Should accept HTTPS URLs
+        let result = ImageBlock::from_url("https://example.com/image.jpg");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().url(), "https://example.com/image.jpg");
+    }
+
+    #[test]
+    fn test_image_block_from_url_accepts_data_uri() {
+        // Should accept data URIs
+        let data_uri = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+        let result = ImageBlock::from_url(data_uri);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().url(), data_uri);
+    }
+
+    #[test]
+    fn test_image_block_from_url_rejects_malformed_data_uri() {
+        // Should reject malformed data URIs
+        let result = ImageBlock::from_url("data:notanimage");
+        assert!(result.is_err());
+        // Should return InvalidInput error for malformed data URI
+        assert!(matches!(result.unwrap_err(), crate::Error::InvalidInput(_)));
+    }
+
+    #[test]
+    fn test_image_block_from_base64_rejects_empty() {
+        // Should reject empty base64 data
+        let result = ImageBlock::from_base64("", "image/png");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("empty"));
+    }
+
+    #[test]
+    fn test_image_block_from_base64_rejects_invalid_mime() {
+        // Should reject non-image MIME types
+        let result = ImageBlock::from_base64("somedata", "text/plain");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("MIME") || err.to_string().contains("image"));
+    }
+
+    #[test]
+    fn test_image_block_from_base64_accepts_valid_input() {
+        // Should accept valid base64 data with image MIME type
+        let base64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+        let result = ImageBlock::from_base64(base64, "image/png");
+        assert!(result.is_ok());
+        let block = result.unwrap();
+        assert!(block.url().starts_with("data:image/png;base64,"));
+    }
+
+    #[test]
+    fn test_image_block_from_base64_accepts_all_image_types() {
+        // Should accept all common image MIME types
+        let base64 = "validdata";
+        let mime_types = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+
+        for mime in &mime_types {
+            let result = ImageBlock::from_base64(base64, *mime);
+            assert!(result.is_ok(), "Should accept {}", mime);
+            let block = result.unwrap();
+            assert!(block.url().starts_with(&format!("data:{};base64,", mime)));
+        }
+    }
+
+    #[test]
+    fn test_image_block_from_base64_rejects_empty_mime() {
+        // Should reject empty MIME type
+        let result = ImageBlock::from_base64("somedata", "");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("MIME") || err.to_string().contains("empty"));
     }
 }

@@ -78,7 +78,7 @@ fn test_image_detail_serialization() {
 fn test_base64_image_data_uri_format() {
     // GIVEN: Base64 image
     let base64_data = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
-    let image = ImageBlock::from_base64(base64_data, "image/png");
+    let image = ImageBlock::from_base64(base64_data, "image/png").unwrap();
 
     // WHEN: URL is extracted
     let url = image.url();
@@ -120,7 +120,9 @@ fn test_image_only_message_to_openai_content() {
     let _message = Message::new(
         MessageRole::User,
         vec![ContentBlock::Image(
-            ImageBlock::from_url("https://example.com/test.jpg").with_detail(ImageDetail::High),
+            ImageBlock::from_url("https://example.com/test.jpg")
+                .unwrap()
+                .with_detail(ImageDetail::High),
         )],
     );
 
@@ -150,6 +152,7 @@ fn test_mixed_content_message_to_openai_content() {
             ContentBlock::Text(TextBlock::new("Look at this:")),
             ContentBlock::Image(
                 ImageBlock::from_url("https://example.com/diagram.png")
+                    .unwrap()
                     .with_detail(ImageDetail::Low),
             ),
             ContentBlock::Text(TextBlock::new("What do you see?")),
