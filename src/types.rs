@@ -1521,6 +1521,41 @@ impl ImageBlock {
             ));
         }
 
+        // Validate base64 character set (alphanumeric + +/=)
+        // This catches common errors like spaces, special characters, etc.
+        if !data
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '+' || c == '/' || c == '=')
+        {
+            return Err(crate::Error::invalid_input(
+                "Base64 data contains invalid characters. Valid characters: A-Z, a-z, 0-9, +, /, =",
+            ));
+        }
+
+        // Validate base64 padding (length must be multiple of 4)
+        if data.len() % 4 != 0 {
+            return Err(crate::Error::invalid_input(
+                "Base64 data has invalid length (must be multiple of 4)",
+            ));
+        }
+
+        // Validate padding characters only appear at the end (max 2)
+        let equals_count = data.chars().filter(|c| *c == '=').count();
+        if equals_count > 2 {
+            return Err(crate::Error::invalid_input(
+                "Base64 data has invalid padding (max 2 '=' characters allowed)",
+            ));
+        }
+        if equals_count > 0 {
+            // Padding must be at the end
+            let trimmed = data.trim_end_matches('=');
+            if trimmed.len() + equals_count != data.len() {
+                return Err(crate::Error::invalid_input(
+                    "Base64 padding characters must be at the end",
+                ));
+            }
+        }
+
         // Validate MIME type is not empty
         if mime.is_empty() {
             return Err(crate::Error::invalid_input("MIME type cannot be empty"));
@@ -1531,6 +1566,23 @@ impl ImageBlock {
             return Err(crate::Error::invalid_input(
                 "MIME type must start with 'image/' (e.g., 'image/png', 'image/jpeg')",
             ));
+        }
+
+        // Check for MIME type injection characters
+        if mime.contains([';', ',', '\n', '\r']) {
+            return Err(crate::Error::invalid_input(
+                "MIME type contains invalid characters (;, \\n, \\r not allowed)",
+            ));
+        }
+
+        // Warn about extremely large base64 data (>10MB)
+        if data.len() > 10_000_000 {
+            eprintln!(
+                "WARNING: Very large base64 image data ({} chars, ~{:.1}MB). \
+                 This may exceed API limits or cause performance issues.",
+                data.len(),
+                (data.len() as f64 * 0.75) / 1_000_000.0
+            );
         }
 
         let url = format!("data:{};base64,{}", mime, data);
@@ -3057,6 +3109,126 @@ mod tests {
             assert!(result.is_ok(), "Should accept {}", mime);
             let block = result.unwrap();
             assert!(block.url().starts_with(&format!("data:{};base64,", mime)));
+        }
+    }
+
+    // Phase 1: Enhanced base64 validation tests (RED)
+
+    #[test]
+    fn test_from_base64_rejects_invalid_characters() {
+        // Should reject base64 with invalid characters
+        let invalid_inputs = [
+            "hello world", // spaces
+            "test@data",   // @
+            "test#data",   // #
+            "test$data",   // $
+            "test%data",   // %
+            "abc\ndef",    // newline
+        ];
+
+        for invalid in &invalid_inputs {
+            let result = ImageBlock::from_base64(invalid, "image/png");
+            assert!(
+                result.is_err(),
+                "Should reject base64 with invalid characters: {}",
+                invalid
+            );
+            let err = result.unwrap_err();
+            assert!(
+                err.to_string().contains("base64") || err.to_string().contains("character"),
+                "Error should mention base64 or character issue, got: {}",
+                err
+            );
+        }
+    }
+
+    #[test]
+    fn test_from_base64_rejects_malformed_padding() {
+        // Should reject base64 with incorrect padding
+        let invalid_padding = [
+            "A",       // Length 1 (not divisible by 4)
+            "AB",      // Length 2 (not divisible by 4)
+            "ABC",     // Length 3 (not divisible by 4)
+            "ABCD===", // Too many padding characters
+        ];
+
+        for invalid in &invalid_padding {
+            let result = ImageBlock::from_base64(invalid, "image/png");
+            assert!(
+                result.is_err(),
+                "Should reject malformed padding: {}",
+                invalid
+            );
+        }
+    }
+
+    #[test]
+    fn test_from_base64_rejects_mime_with_semicolon() {
+        // Should reject MIME types with injection characters (semicolon)
+        // Use valid base64 (length divisible by 4)
+        let result = ImageBlock::from_base64("AAAA", "image/png;charset=utf-8");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string().contains("MIME") || err.to_string().contains("character"),
+            "Error should mention MIME or character issue, got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_from_base64_rejects_mime_with_newline() {
+        // Should reject MIME types with control characters (newline)
+        let invalid_mimes = [
+            "image/png\n",
+            "image/png\r",
+            "image/png\r\n",
+            "image/png,extra",
+        ];
+
+        for mime in &invalid_mimes {
+            // Use valid base64 (length divisible by 4)
+            let result = ImageBlock::from_base64("AAAA", mime);
+            assert!(
+                result.is_err(),
+                "Should reject MIME with control/injection chars: {:?}",
+                mime
+            );
+        }
+    }
+
+    #[test]
+    fn test_from_base64_warns_large_data() {
+        // Should warn (but accept) very large base64 strings (>10MB)
+        // 15MB base64 = 15,000,000 chars
+        let large_base64 = "A".repeat(15_000_000);
+
+        // This should succeed but log a warning
+        let result = ImageBlock::from_base64(&large_base64, "image/png");
+        assert!(result.is_ok(), "Should accept large base64 (with warning)");
+
+        // Verify the data URI was created
+        let block = result.unwrap();
+        assert!(block.url().len() > 15_000_000);
+    }
+
+    #[test]
+    fn test_from_base64_accepts_all_image_mime_types() {
+        // Should accept all common image MIME types
+        let valid_data = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+        let mime_types = [
+            "image/jpeg",
+            "image/png",
+            "image/gif",
+            "image/webp",
+            "image/avif",
+            "image/bmp",
+            "image/tiff",
+        ];
+
+        for mime in &mime_types {
+            let result = ImageBlock::from_base64(valid_data, *mime);
+            assert!(result.is_ok(), "Should accept valid MIME type: {}", mime);
         }
     }
 
