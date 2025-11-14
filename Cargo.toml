@@ -51,6 +51,9 @@ rand = "0.8"
 # Logging
 log = "0.4"
 
+# Base64 encoding for image support
+base64 = "0.22"
+
 [dev-dependencies]
 tokio-test = "0.4"
 regex = "1.10"

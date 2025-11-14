@@ -40,6 +40,8 @@ Open Agent SDK (Rust) provides a clean, streaming API for working with OpenAI-co
 - **Any OpenAI-compatible local endpoint**
 - **Local gateways proxying cloud models** - e.g., Ollama or custom gateways that route to cloud providers
 
+**Note on LM Studio:** LM Studio is particularly well-tested with this SDK and provides reliable OpenAI-compatible API support. If you're looking for a user-friendly local model server with excellent compatibility, LM Studio is highly recommended.
+
 ### Not Supported (Use Official SDKs)
 
 - **Claude/OpenAI direct** - Use their official SDKs, unless you proxy through a local OpenAI-compatible gateway
@@ -229,28 +231,50 @@ Send images alongside text to vision-capable models like llava, qwen-vl, or mini
 ### Simple Image + Text
 
 ```rust
-use open_agent::{Message, ImageDetail};
+use open_agent::{Client, Message, ImageBlock, ImageDetail};
 
 // From URL
 let msg = Message::user_with_image(
     "What's in this image?",
     "https://example.com/photo.jpg"
+)?;
+client.send_message(msg).await?;
+
+// From local file path (NEW!)
+let msg = Message::new(
+    MessageRole::User,
+    vec![
+        ContentBlock::Text(TextBlock::new("Describe this photo")),
+        ContentBlock::Image(ImageBlock::from_file_path("/path/to/photo.jpg")?),
+    ],
 );
+client.send_message(msg).await?;
 
 // From base64 data
 let msg = Message::user_with_base64_image(
     "Describe this diagram",
     base64_data,
     "image/png"
-);
+)?;
+client.send_message(msg).await?;
 
 // Control detail level for token costs
 let msg = Message::user_with_image_detail(
     "Analyze the fine details",
     "https://example.com/diagram.png",
     ImageDetail::High  // Low: ~85 tokens, High: variable, Auto: default
-);
+)?;
+client.send_message(msg).await?;
 ```
+
+**Supported Image Sources:**
+
+- **`ImageBlock::from_url(url)`** - HTTPS/HTTP URLs
+- **`ImageBlock::from_file_path(path)`** - Local filesystem (automatically encodes as base64)
+  - Supports: `.jpg`, `.jpeg`, `.png`, `.gif`, `.webp`, `.bmp`, `.svg`
+  - MIME type inferred from file extension
+  - File is read and encoded automatically
+- **`ImageBlock::from_base64(data, mime)`** - Manual base64 with explicit MIME type
 
 ### Token Cost Management
 
@@ -289,12 +313,14 @@ let msg = Message::new(
 
 **Key Features:**
 
+- **`send_message()` API** - Send pre-built messages with images via `client.send_message(msg).await?`
 - **Automatic serialization** - Images converted to OpenAI Vision API format
-- **Backward compatible** - Text-only messages maintain simple string format
-- **Data URIs supported** - Send base64-encoded images without external URLs
+- **Multiple sources** - URLs, local file paths, or base64 data
+- **Backward compatible** - Text-only messages still work with `send("text")`
+- **Data URIs supported** - Base64-encoded images transmitted seamlessly
 - **Token cost control** - Choose detail level based on use case
 
-See `examples/vision_api_demo.rs` for comprehensive examples.
+See `examples/vision_example.rs` for comprehensive working examples including local file paths.
 
 ## Context Management
 

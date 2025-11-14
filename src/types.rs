@@ -1700,6 +1700,87 @@ impl ImageBlock {
         })
     }
 
+    /// Creates a new image block from a local file path.
+    ///
+    /// This is a convenience method that reads the file from disk, encodes it as
+    /// base64, and creates an ImageBlock with a data URI. The MIME type is inferred
+    /// from the file extension.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - Path to the image file on the local filesystem
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::InvalidInput` if:
+    /// - File cannot be read
+    /// - File extension is missing or unsupported
+    /// - File is too large (>10MB warning)
+    ///
+    /// # Supported Formats
+    ///
+    /// - `.jpg`, `.jpeg` → `image/jpeg`
+    /// - `.png` → `image/png`
+    /// - `.gif` → `image/gif`
+    /// - `.webp` → `image/webp`
+    /// - `.bmp` → `image/bmp`
+    /// - `.svg` → `image/svg+xml`
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use open_agent::ImageBlock;
+    ///
+    /// let image = ImageBlock::from_file_path("/path/to/photo.jpg")?;
+    /// # Ok::<(), open_agent::Error>(())
+    /// ```
+    ///
+    /// # Security Note
+    ///
+    /// This method reads files from the local filesystem. Ensure the path comes from
+    /// a trusted source to prevent unauthorized file access.
+    pub fn from_file_path(path: impl AsRef<std::path::Path>) -> crate::Result<Self> {
+        use base64::{Engine as _, engine::general_purpose};
+
+        let path = path.as_ref();
+
+        // Read file bytes
+        let bytes = std::fs::read(path).map_err(|e| {
+            crate::Error::invalid_input(format!(
+                "Failed to read image file '{}': {}",
+                path.display(),
+                e
+            ))
+        })?;
+
+        // Determine MIME type from file extension
+        let mime_type = match path.extension().and_then(|e| e.to_str()) {
+            Some("jpg") | Some("jpeg") => "image/jpeg",
+            Some("png") => "image/png",
+            Some("gif") => "image/gif",
+            Some("webp") => "image/webp",
+            Some("bmp") => "image/bmp",
+            Some("svg") => "image/svg+xml",
+            Some(ext) => {
+                return Err(crate::Error::invalid_input(format!(
+                    "Unsupported image file extension: .{}. Supported: jpg, jpeg, png, gif, webp, bmp, svg",
+                    ext
+                )));
+            }
+            None => {
+                return Err(crate::Error::invalid_input(
+                    "Image file path must have a file extension (e.g., .jpg, .png)",
+                ));
+            }
+        };
+
+        // Encode to base64
+        let base64_data = general_purpose::STANDARD.encode(&bytes);
+
+        // Use existing from_base64 method for validation
+        Self::from_base64(&base64_data, mime_type)
+    }
+
     /// Sets the image detail level.
     ///
     /// # Example
@@ -3050,6 +3131,55 @@ mod tests {
         let block = ImageBlock::from_base64("iVBORw0KGgoAAAA=", "image/jpeg").unwrap();
         assert!(block.url().starts_with("data:image/jpeg;base64,"));
         assert!(matches!(block.detail(), ImageDetail::Auto));
+    }
+
+    #[test]
+    fn test_image_block_from_file_path() {
+        use base64::{Engine as _, engine::general_purpose};
+        use std::io::Write;
+
+        // Create a temporary test file
+        let temp_dir = std::env::temp_dir();
+        let test_file = temp_dir.join("test_image.png");
+
+        // Write a minimal valid 1x1 PNG (red pixel)
+        let png_bytes = general_purpose::STANDARD
+            .decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==")
+            .unwrap();
+        std::fs::File::create(&test_file)
+            .unwrap()
+            .write_all(&png_bytes)
+            .unwrap();
+
+        // Test: Should successfully load the file
+        let block = ImageBlock::from_file_path(&test_file).unwrap();
+        assert!(block.url().starts_with("data:image/png;base64,"));
+        assert!(matches!(block.detail(), ImageDetail::Auto));
+
+        // Test: Missing extension should fail
+        let no_ext_file = temp_dir.join("test_image_no_ext");
+        std::fs::File::create(&no_ext_file)
+            .unwrap()
+            .write_all(&png_bytes)
+            .unwrap();
+        let result = ImageBlock::from_file_path(&no_ext_file);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("extension"));
+
+        // Test: Unsupported extension should fail
+        let bad_ext_file = temp_dir.join("test_image.txt");
+        std::fs::File::create(&bad_ext_file)
+            .unwrap()
+            .write_all(&png_bytes)
+            .unwrap();
+        let result = ImageBlock::from_file_path(&bad_ext_file);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Unsupported"));
+
+        // Cleanup
+        let _ = std::fs::remove_file(&test_file);
+        let _ = std::fs::remove_file(&no_ext_file);
+        let _ = std::fs::remove_file(&bad_ext_file);
     }
 
     #[test]
