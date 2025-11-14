@@ -48,10 +48,14 @@ eventsource-stream = "0.2"
 # Random (for retry jitter)
 rand = "0.8"
 
+# Logging
+log = "0.4"
+
 [dev-dependencies]
 tokio-test = "0.4"
 regex = "1.10"
 criterion = "0.5"
+env_logger = "0.11"
 
 [lib]
 name = "open_agent"

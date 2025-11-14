@@ -1180,6 +1180,13 @@ impl Client {
             }
             // Case 3: Message contains images (use OpenAIContent::Parts)
             else if !image_blocks.is_empty() {
+                // Log debug info about images being serialized
+                log::debug!(
+                    "Serializing message with {} image(s) for {:?} role",
+                    image_blocks.len(),
+                    msg.role
+                );
+
                 // Build content parts array preserving original order
                 let mut content_parts = Vec::new();
 
@@ -1198,6 +1205,19 @@ impl Client {
                             content_parts.push(OpenAIContentPart::text(&text.text));
                         }
                         ContentBlock::Image(image) => {
+                            // Log image details (truncate URL for privacy)
+                            let url_display = if image.url().len() > 100 {
+                                format!("{}... ({} chars)", &image.url()[..100], image.url().len())
+                            } else {
+                                image.url().to_string()
+                            };
+                            let detail_str = match image.detail() {
+                                crate::types::ImageDetail::Low => "low",
+                                crate::types::ImageDetail::High => "high",
+                                crate::types::ImageDetail::Auto => "auto",
+                            };
+                            log::debug!("  - Image: {} (detail: {})", url_display, detail_str);
+
                             content_parts
                                 .push(OpenAIContentPart::image_url(image.url(), image.detail()));
                         }
