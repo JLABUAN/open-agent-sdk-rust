@@ -2075,15 +2075,57 @@ impl OpenAIContentPart {
         Self::Text { text: text.into() }
     }
 
-    /// Creates an image URL content part.
+    /// Creates an image content part from a validated ImageBlock.
+    ///
+    /// This is the preferred way to create image content parts as it ensures
+    /// the image URL has been validated against security issues (XSS, file disclosure, etc.)
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use open_agent::{OpenAIContentPart, ImageBlock, ImageDetail};
+    ///
+    /// let image = ImageBlock::from_url("https://example.com/img.jpg")
+    ///     .expect("Valid URL");
+    /// let part = OpenAIContentPart::from_image(&image);
+    /// ```
+    pub fn from_image(image: &ImageBlock) -> Self {
+        Self::ImageUrl {
+            image_url: OpenAIImageUrl {
+                url: image.url().to_string(),
+                detail: Some(image.detail().to_string()),
+            },
+        }
+    }
+
+    /// Creates an image URL content part directly (DEPRECATED).
+    ///
+    /// # Security Warning
+    ///
+    /// This method bypasses validation checks performed by `ImageBlock::from_url()`
+    /// and `ImageBlock::from_base64()`. Prefer using `from_image()` instead.
+    ///
+    /// # Deprecation
+    ///
+    /// This method is deprecated and will be removed in v1.0. Use `from_image()` instead.
     ///
     /// # Example
     ///
     /// ```
     /// use open_agent::{OpenAIContentPart, ImageDetail};
     ///
+    /// // Deprecated approach:
     /// let part = OpenAIContentPart::image_url("https://example.com/img.jpg", ImageDetail::High);
+    ///
+    /// // Preferred approach:
+    /// use open_agent::ImageBlock;
+    /// let image = ImageBlock::from_url("https://example.com/img.jpg").expect("Valid URL");
+    /// let part = OpenAIContentPart::from_image(&image);
     /// ```
+    #[deprecated(
+        since = "0.6.0",
+        note = "Use `from_image()` instead to ensure proper validation"
+    )]
     pub fn image_url(url: impl Into<String>, detail: ImageDetail) -> Self {
         Self::ImageUrl {
             image_url: OpenAIImageUrl {

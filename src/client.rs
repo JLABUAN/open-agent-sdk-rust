@@ -1213,7 +1213,7 @@ impl Client {
                             log::debug!("  - Image: {} (detail: {})", url_display, detail_str);
 
                             content_parts
-                                .push(OpenAIContentPart::image_url(image.url(), image.detail()));
+                                .push(OpenAIContentPart::from_image(image));
                         }
                         ContentBlock::ToolUse(_) | ContentBlock::ToolResult(_) => {}
                     }
@@ -2562,10 +2562,7 @@ mod tests {
                     content_parts.push(crate::types::OpenAIContentPart::text(&text.text));
                 }
                 ContentBlock::Image(image) => {
-                    content_parts.push(crate::types::OpenAIContentPart::image_url(
-                        image.url(),
-                        image.detail(),
-                    ));
+                    content_parts.push(crate::types::OpenAIContentPart::from_image(image));
                 }
                 ContentBlock::ToolUse(_) | ContentBlock::ToolResult(_) => {}
             }
