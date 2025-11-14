@@ -1397,8 +1397,8 @@ impl std::fmt::Display for ImageDetail {
 /// // From URL
 /// let image = ImageBlock::from_url("https://example.com/image.jpg")?;
 ///
-/// // From base64
-/// let image = ImageBlock::from_base64("iVBORw0KGgo...", "image/png")?;
+/// // From base64 (use properly formatted base64)
+/// let image = ImageBlock::from_base64("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "image/png")?;
 ///
 /// // With detail level
 /// let image = ImageBlock::from_url("https://example.com/image.jpg")?
@@ -1948,7 +1948,8 @@ impl Message {
     /// ```
     /// use open_agent::Message;
     ///
-    /// let base64_data = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ...";
+    /// // Use properly formatted base64 (length divisible by 4, valid chars)
+    /// let base64_data = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
     /// let msg = Message::user_with_base64_image(
     ///     "What's this image?",
     ///     base64_data,
