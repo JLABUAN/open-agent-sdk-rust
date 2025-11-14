@@ -36,11 +36,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Receive and print the response
     println!("Response:");
     while let Some(block) = client.receive().await? {
-        match block {
-            ContentBlock::Text(text) => {
-                print!("{}", text.text);
-            }
-            _ => {}
+        if let ContentBlock::Text(text) = block {
+            print!("{}", text.text);
         }
     }
     println!("\n");
@@ -58,11 +55,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Response:");
     while let Some(block) = client.receive().await? {
-        match block {
-            ContentBlock::Text(text) => {
-                print!("{}", text.text);
-            }
-            _ => {}
+        if let ContentBlock::Text(text) = block {
+            print!("{}", text.text);
         }
     }
     println!("\n");
@@ -73,21 +67,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // This is a 1x1 red pixel PNG for demonstration
     let base64_data = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==";
 
-    let msg = Message::user_with_base64_image(
-        "What color is this pixel?",
-        base64_data,
-        "image/png",
-    )?;
+    let msg =
+        Message::user_with_base64_image("What color is this pixel?", base64_data, "image/png")?;
 
     client.send_message(msg).await?;
 
     println!("Response:");
     while let Some(block) = client.receive().await? {
-        match block {
-            ContentBlock::Text(text) => {
-                print!("{}", text.text);
-            }
-            _ => {}
+        if let ContentBlock::Text(text) = block {
+            print!("{}", text.text);
         }
     }
     println!("\n");
@@ -97,13 +85,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // For complex scenarios, manually construct a Message with multiple images
     use open_agent::{ImageBlock, MessageRole, TextBlock};
 
-    let image1 = ImageBlock::from_url("https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/Cat03.jpg/400px-Cat03.jpg")?;
-    let image2 = ImageBlock::from_url("https://upload.wikimedia.org/wikipedia/commons/thumb/4/4d/Cat_November_2010-1a.jpg/400px-Cat_November_2010-1a.jpg")?;
+    let image1 = ImageBlock::from_url(
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/Cat03.jpg/400px-Cat03.jpg",
+    )?;
+    let image2 = ImageBlock::from_url(
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4d/Cat_November_2010-1a.jpg/400px-Cat_November_2010-1a.jpg",
+    )?;
 
     let msg = Message::new(
         MessageRole::User,
         vec![
-            ContentBlock::Text(TextBlock::new("Compare these two images. What are the similarities and differences?")),
+            ContentBlock::Text(TextBlock::new(
+                "Compare these two images. What are the similarities and differences?",
+            )),
             ContentBlock::Image(image1),
             ContentBlock::Image(image2),
         ],
@@ -113,11 +107,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Response:");
     while let Some(block) = client.receive().await? {
-        match block {
-            ContentBlock::Text(text) => {
-                print!("{}", text.text);
-            }
-            _ => {}
+        if let ContentBlock::Text(text) = block {
+            print!("{}", text.text);
         }
     }
     println!("\n");
