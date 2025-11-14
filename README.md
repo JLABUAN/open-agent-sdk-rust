@@ -222,6 +222,74 @@ while let Some(block) = client.receive().await {
 
 See `examples/calculator_tools.rs` and `examples/auto_execution_demo.rs` for complete examples.
 
+## Multimodal Vision Support
+
+Send images alongside text to vision-capable models like llava, qwen-vl, or minicpm-v. The SDK handles OpenAI Vision API formatting automatically.
+
+### Simple Image + Text
+
+```rust
+use open_agent::{Message, ImageDetail};
+
+// From URL
+let msg = Message::user_with_image(
+    "What's in this image?",
+    "https://example.com/photo.jpg"
+);
+
+// From base64 data
+let msg = Message::user_with_base64_image(
+    "Describe this diagram",
+    base64_data,
+    "image/png"
+);
+
+// Control detail level for token costs
+let msg = Message::user_with_image_detail(
+    "Analyze the fine details",
+    "https://example.com/diagram.png",
+    ImageDetail::High  // Low: ~85 tokens, High: variable, Auto: default
+);
+```
+
+### Token Cost Management
+
+Images consume tokens based on detail level:
+
+- **`ImageDetail::Low`** - Fixed ~85 tokens, 512x512 max (cost-effective for OCR, object detection)
+- **`ImageDetail::High`** - Variable tokens based on dimensions (detailed analysis, fine text)
+- **`ImageDetail::Auto`** - Model decides (balanced default)
+
+### Complex Multi-Image Messages
+
+```rust
+use open_agent::{Message, MessageRole, ContentBlock, TextBlock, ImageBlock, ImageDetail};
+
+let msg = Message::new(
+    MessageRole::User,
+    vec![
+        ContentBlock::Text(TextBlock::new("Compare these images:")),
+        ContentBlock::Image(
+            ImageBlock::from_url("https://example.com/before.jpg")
+                .with_detail(ImageDetail::Low)
+        ),
+        ContentBlock::Image(
+            ImageBlock::from_url("https://example.com/after.jpg")
+                .with_detail(ImageDetail::Low)
+        ),
+    ],
+);
+```
+
+**Key Features:**
+
+- **Automatic serialization** - Images converted to OpenAI Vision API format
+- **Backward compatible** - Text-only messages maintain simple string format
+- **Data URIs supported** - Send base64-encoded images without external URLs
+- **Token cost control** - Choose detail level based on use case
+
+See `examples/vision_api_demo.rs` for comprehensive examples.
+
 ## Context Management
 
 Local models have fixed context windows (typically 8k-32k tokens). The SDK provides utilities for manual history management—no silent mutations, you stay in control.
