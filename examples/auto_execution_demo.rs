@@ -133,6 +133,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // Should NOT receive ToolResult blocks either!
                 println!("⚠️  Unexpected: Received ToolResult block");
             }
+            ContentBlock::Image(_) => {
+                // Images not relevant for this example
+            }
         }
     }
 
@@ -162,6 +165,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             ContentBlock::ToolUse(_) | ContentBlock::ToolResult(_) => {
                 println!("⚠️  Unexpected: Received tool block in auto mode");
             }
+            ContentBlock::Image(_) => {
+                // Images not relevant for this example
+            }
         }
     }
 
@@ -190,6 +196,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             ContentBlock::ToolUse(_) | ContentBlock::ToolResult(_) => {
                 println!("⚠️  Unexpected: Received tool block in auto mode");
+            }
+            ContentBlock::Image(_) => {
+                // Images not relevant for this example
             }
         }
     }

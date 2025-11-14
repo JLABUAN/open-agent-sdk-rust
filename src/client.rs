@@ -313,8 +313,8 @@
 //! ```
 
 use crate::types::{
-    AgentOptions, ContentBlock, Message, MessageRole, OpenAIContent, OpenAIFunction, OpenAIMessage,
-    OpenAIRequest, OpenAIToolCall, TextBlock,
+    AgentOptions, ContentBlock, Message, MessageRole, OpenAIContent, OpenAIContentPart,
+    OpenAIFunction, OpenAIMessage, OpenAIRequest, OpenAIToolCall, TextBlock,
 };
 use crate::utils::{ToolCallAggregator, parse_sse_stream};
 use crate::{Error, Result};
@@ -1106,16 +1106,14 @@ impl Client {
         for msg in &self.history {
             // Separate blocks by type to determine message structure
             let mut text_blocks = Vec::new();
+            let mut image_blocks = Vec::new();
             let mut tool_use_blocks = Vec::new();
             let mut tool_result_blocks = Vec::new();
 
             for block in &msg.content {
                 match block {
                     ContentBlock::Text(text) => text_blocks.push(text),
-                    ContentBlock::Image(_image) => {
-                        // Image handling will be implemented in Phase 2
-                        // For now, just ignore images to avoid compilation errors
-                    }
+                    ContentBlock::Image(image) => image_blocks.push(image),
                     ContentBlock::ToolUse(tool_use) => tool_use_blocks.push(tool_use),
                     ContentBlock::ToolResult(tool_result) => tool_result_blocks.push(tool_result),
                 }
@@ -1178,7 +1176,40 @@ impl Client {
                     tool_call_id: None,
                 });
             }
-            // Case 3: Message contains only text (normal message)
+            // Case 3: Message contains images (use OpenAIContent::Parts)
+            else if !image_blocks.is_empty() {
+                // Build content parts array preserving original order
+                let mut content_parts = Vec::new();
+
+                // Re-iterate through content blocks to maintain order
+                for block in &msg.content {
+                    match block {
+                        ContentBlock::Text(text) => {
+                            content_parts.push(OpenAIContentPart::text(&text.text));
+                        }
+                        ContentBlock::Image(image) => {
+                            content_parts
+                                .push(OpenAIContentPart::image_url(image.url(), image.detail()));
+                        }
+                        _ => {}
+                    }
+                }
+
+                let role_str = match msg.role {
+                    MessageRole::System => "system",
+                    MessageRole::User => "user",
+                    MessageRole::Assistant => "assistant",
+                    MessageRole::Tool => "tool",
+                };
+
+                messages.push(OpenAIMessage {
+                    role: role_str.to_string(),
+                    content: Some(OpenAIContent::Parts(content_parts)),
+                    tool_calls: None,
+                    tool_call_id: None,
+                });
+            }
+            // Case 4: Message contains only text (normal message, backward compatible)
             else {
                 let content = text_blocks
                     .iter()

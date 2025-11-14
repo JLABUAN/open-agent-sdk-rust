@@ -125,6 +125,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ContentBlock::ToolResult(_) => {
                     // Tool results handled manually in this example
                 }
+                ContentBlock::Image(_) => {
+                    // Images not relevant for this example
+                }
             }
         }
 

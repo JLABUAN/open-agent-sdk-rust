@@ -89,6 +89,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     ContentBlock::ToolResult(result) => {
                         println!("✓ Received tool result for: {}", result.tool_use_id);
                     }
+                    ContentBlock::Image(_) => {
+                        // Images not relevant for this example
+                    }
                 }
             }
 

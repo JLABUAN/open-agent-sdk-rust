@@ -269,6 +269,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         tool_result.tool_use_id
                     );
                 }
+                ContentBlock::Image(_) => {
+                    // Images not relevant for this example
+                }
             }
         }
 

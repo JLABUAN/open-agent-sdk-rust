@@ -1370,7 +1370,6 @@ pub enum ImageDetail {
     Auto,
 }
 
-
 impl std::fmt::Display for ImageDetail {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

@@ -55,6 +55,9 @@
 //!             ContentBlock::ToolResult(_) => {
 //!                 // Tool results can be ignored in simple queries
 //!             }
+//!             ContentBlock::Image(_) => {
+//!                 // Images not expected in this example
+//!             }
 //!         }
 //!     }
 //!

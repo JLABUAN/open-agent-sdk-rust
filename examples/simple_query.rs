@@ -36,6 +36,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             ContentBlock::ToolResult(_) => {
                 // Tool results not expected in simple query
             }
+            ContentBlock::Image(_) => {
+                // Images not relevant for this example
+            }
         }
     }
 
