@@ -50,10 +50,13 @@
 //!                 print!("{}", text_block.text);
 //!             }
 //!             ContentBlock::ToolUse(tool_block) => {
-//!                 println!("Tool called: {}", tool_block.name);
+//!                 println!("Tool called: {}", tool_block.name());
 //!             }
 //!             ContentBlock::ToolResult(_) => {
 //!                 // Tool results can be ignored in simple queries
+//!             }
+//!             ContentBlock::Image(_) => {
+//!                 // Images not expected in this example
 //!             }
 //!         }
 //!     }
@@ -83,16 +86,18 @@
 //!     // First turn
 //!     client.send("What's 2+2?").await?;
 //!     while let Some(block) = client.receive().await? {
-//!         if let ContentBlock::Text(text) = block {
-//!             print!("{}", text.text);
+//!         match block {
+//!             ContentBlock::Text(text) => print!("{}", text.text),
+//!             ContentBlock::ToolUse(_) | ContentBlock::ToolResult(_) | ContentBlock::Image(_) => {}
 //!         }
 //!     }
 //!
 //!     // Second turn - client remembers previous context
 //!     client.send("What about if we multiply that by 3?").await?;
 //!     while let Some(block) = client.receive().await? {
-//!         if let ContentBlock::Text(text) = block {
-//!             print!("{}", text.text);
+//!         match block {
+//!             ContentBlock::Text(text) => print!("{}", text.text),
+//!             ContentBlock::ToolUse(_) | ContentBlock::ToolResult(_) | ContentBlock::Image(_) => {}
 //!         }
 //!     }
 //!
@@ -193,8 +198,9 @@ pub use tools::{Tool, ToolBuilder, tool};
 // --- Core Types ---
 
 pub use types::{
-    AgentOptions, AgentOptionsBuilder, BaseUrl, ContentBlock, Message, MessageRole, ModelName,
-    Temperature, TextBlock, ToolResultBlock, ToolUseBlock,
+    AgentOptions, AgentOptionsBuilder, BaseUrl, ContentBlock, ImageBlock, ImageDetail, Message,
+    MessageRole, ModelName, OpenAIContent, OpenAIContentPart, Temperature, TextBlock,
+    ToolResultBlock, ToolUseBlock,
 };
 
 // ============================================================================

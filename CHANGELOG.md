@@ -5,6 +5,162 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+**Defensive Programming Enhancements** - Maximum Input Validation
+
+Added comprehensive validation and logging for image handling following maximum defensive programming practices:
+
+#### Enhanced Base64 Validation (`ImageBlock::from_base64`)
+
+- **Character set validation**: Rejects invalid base64 characters (spaces, special chars, etc.)
+- **Length validation**: Enforces length must be multiple of 4
+- **Padding validation**: Max 2 '=' characters, must be at end
+- **MIME injection prevention**: Rejects semicolons, newlines, commas in MIME type
+- **Large data warning**: Warns when base64 exceeds 10MB
+
+#### Enhanced URL Validation (`ImageBlock::from_url`)
+
+- **Control character detection**: Rejects URLs with newline, tab, null, etc.
+- **Data URI base64 validation**: Validates base64 portion using same rules as `from_base64()`
+- **Long URL warning**: Warns when URL exceeds 2000 characters
+- **Scheme validation**: Already rejected dangerous schemes (javascript:, file:, etc.)
+
+#### Empty Text Block Handling
+
+- **Warning on empty text**: Logs warning when empty or whitespace-only text blocks are serialized
+- **No data loss**: Empty text blocks are still included (not dropped), just warned about
+- **Debugging aid**: Warning includes message role to help identify source
+
+#### Debug Logging (Optional)
+
+- **Image serialization logging**: Debug logs when images are included in messages
+- **URL truncation**: Long URLs truncated to 100 chars in logs for privacy
+- **Detail level logging**: Logs image detail level (low/high/auto)
+- **Opt-in**: Requires user to initialize a logger (using `log` crate)
+
+#### New Dependencies
+
+- `log = "0.4"` - Logging facade (runtime)
+- `env_logger = "0.11"` - Logger implementation (dev dependency)
+
+#### Testing
+
+- 17 new tests across 4 test files
+- Total: 154 tests passing (107 lib + 47 integration)
+- Zero clippy warnings
+- All tests follow TDD (RED → GREEN → REFACTOR → COMMIT)
+
+#### Breaking Changes
+
+**None** - All enhancements are backward compatible. Existing valid inputs continue to work; only truly invalid inputs are rejected.
+
+## [0.6.0] - 2025-11-13
+
+### Added
+
+**Multimodal Image Support** - Vision API Integration
+
+Added comprehensive support for sending images alongside text to vision-capable models following the OpenAI Vision API format:
+
+#### New Types
+
+- **`ImageBlock`** - Represents an image in a message
+  - `from_url(url)` - Create from HTTP/HTTPS URL
+  - `from_base64(data, mime_type)` - Create from base64-encoded data
+  - `with_detail(detail)` - Set detail level for token cost control
+  - `url()` - Get the image URL (HTTP or data URI)
+  - `detail()` - Get the detail level
+
+- **`ImageDetail`** - Control image processing and token costs
+  - `ImageDetail::Low` - Fixed ~85 tokens, 512x512 max resolution
+  - `ImageDetail::High` - Variable tokens based on image dimensions
+  - `ImageDetail::Auto` - Let the model decide (default)
+
+- **`OpenAIContent`** - Message content format (internal)
+  - `Text(String)` - Simple text (backward compatible)
+  - `Parts(Vec<OpenAIContentPart>)` - Mixed text and images
+
+- **`OpenAIContentPart`** - Content part for multimodal messages
+  - `text(content)` - Text content part
+  - `image_url(url, detail)` - Image content part
+
+#### Convenience API
+
+New `Message` helper methods for ergonomic image support:
+
+```rust
+// Simple image + text
+let msg = Message::user_with_image(
+    "What's in this image?",
+    "https://example.com/photo.jpg"
+);
+
+// Control detail level for token management
+let msg = Message::user_with_image_detail(
+    "Analyze this diagram",
+    "https://example.com/diagram.png",
+    ImageDetail::High
+);
+
+// Base64-encoded images
+let msg = Message::user_with_base64_image(
+    "What color is this?",
+    base64_data,
+    "image/png"
+);
+```
+
+#### Client Integration
+
+- Messages containing images automatically serialized to OpenAI Vision API format
+- Text-only messages maintain simple string format (backward compatible)
+- Mixed text+image messages use array format with proper content parts
+- Image detail levels properly passed through to API
+
+#### Examples
+
+- `examples/vision_api_demo.rs` - Comprehensive demonstration of:
+  - Simple image + text messages
+  - Detail level control for token costs
+  - Base64-encoded images
+  - Complex multi-image messages
+  - Usage patterns with vision models
+
+#### Testing
+
+- 8 integration tests for image serialization (`tests/image_serialization_test.rs`)
+- 3 unit tests for Message helper methods
+- All existing tests updated to handle `ContentBlock::Image` variant
+- Total: 256 tests passing (77 unit + 33 integration + 146 doc)
+
+#### Token Cost Management
+
+`ImageDetail` enum allows control of image processing resolution:
+- **Low**: Lower resolution processing
+- **High**: Higher resolution processing
+- **Auto**: Model decides (default)
+
+**⚠️ Token Costs Vary Significantly by Model:**
+
+OpenAI's Vision API reference values (~85 tokens for Low, variable for High) **do not apply** to most local models. Local models (llama.cpp, Ollama, vLLM) may:
+- Calculate tokens completely differently
+- Not charge tokens for images at all
+- Ignore the `ImageDetail` setting entirely
+
+**Always benchmark your specific model** - do not rely on OpenAI's values for context window planning.
+
+#### Documentation
+
+- Comprehensive rustdoc for all new types and methods
+- Token cost guidance in documentation
+- Working examples with vision model setup instructions
+- Clear migration patterns for vision capabilities
+
+**Related**: Closes GitHub issue #2
+
 ## [0.5.0] - 2025-11-13
 
 ### Fixed

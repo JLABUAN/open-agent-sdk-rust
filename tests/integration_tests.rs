@@ -176,7 +176,7 @@ fn test_content_blocks() {
     }
 
     match tool_use {
-        ContentBlock::ToolUse(t) => assert_eq!(t.name, "tool_name"),
+        ContentBlock::ToolUse(t) => assert_eq!(t.name(), "tool_name"),
         _ => panic!("Expected ToolUseBlock"),
     }
 }

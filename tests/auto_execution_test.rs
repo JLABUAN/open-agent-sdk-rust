@@ -32,6 +32,9 @@ async fn collect_response(client: &mut Client) -> Result<(Vec<String>, usize), S
                 Ok(Some(ContentBlock::ToolResult(_))) => {
                     // Ignore tool results in auto mode
                 }
+                Ok(Some(ContentBlock::Image(_))) => {
+                    // Images not relevant for this test
+                }
                 Ok(None) => break,
                 Err(e) => {
                     return Err(format!("Error receiving block: {}", e));

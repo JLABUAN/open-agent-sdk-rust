@@ -40,6 +40,8 @@ Open Agent SDK (Rust) provides a clean, streaming API for working with OpenAI-co
 - **Any OpenAI-compatible local endpoint**
 - **Local gateways proxying cloud models** - e.g., Ollama or custom gateways that route to cloud providers
 
+**Note on LM Studio:** LM Studio is particularly well-tested with this SDK and provides reliable OpenAI-compatible API support. If you're looking for a user-friendly local model server with excellent compatibility, LM Studio is highly recommended.
+
 ### Not Supported (Use Official SDKs)
 
 - **Claude/OpenAI direct** - Use their official SDKs, unless you proxy through a local OpenAI-compatible gateway
@@ -221,6 +223,104 @@ while let Some(block) = client.receive().await {
 - **Hook integration** - PreToolUse/PostToolUse hooks work in both modes
 
 See `examples/calculator_tools.rs` and `examples/auto_execution_demo.rs` for complete examples.
+
+## Multimodal Vision Support
+
+Send images alongside text to vision-capable models like llava, qwen-vl, or minicpm-v. The SDK handles OpenAI Vision API formatting automatically.
+
+### Simple Image + Text
+
+```rust
+use open_agent::{Client, Message, ImageBlock, ImageDetail};
+
+// From URL
+let msg = Message::user_with_image(
+    "What's in this image?",
+    "https://example.com/photo.jpg"
+)?;
+client.send_message(msg).await?;
+
+// From local file path (NEW!)
+let msg = Message::new(
+    MessageRole::User,
+    vec![
+        ContentBlock::Text(TextBlock::new("Describe this photo")),
+        ContentBlock::Image(ImageBlock::from_file_path("/path/to/photo.jpg")?),
+    ],
+);
+client.send_message(msg).await?;
+
+// From base64 data
+let msg = Message::user_with_base64_image(
+    "Describe this diagram",
+    base64_data,
+    "image/png"
+)?;
+client.send_message(msg).await?;
+
+// Control detail level for token costs
+let msg = Message::user_with_image_detail(
+    "Analyze the fine details",
+    "https://example.com/diagram.png",
+    ImageDetail::High  // Low: ~85 tokens, High: variable, Auto: default
+)?;
+client.send_message(msg).await?;
+```
+
+**Supported Image Sources:**
+
+- **`ImageBlock::from_url(url)`** - HTTPS/HTTP URLs
+- **`ImageBlock::from_file_path(path)`** - Local filesystem (automatically encodes as base64)
+  - Supports: `.jpg`, `.jpeg`, `.png`, `.gif`, `.webp`, `.bmp`, `.svg`
+  - MIME type inferred from file extension
+  - File is read and encoded automatically
+- **`ImageBlock::from_base64(data, mime)`** - Manual base64 with explicit MIME type
+
+### Token Cost Management
+
+Control image processing costs using `ImageDetail` levels:
+
+- **`ImageDetail::Low`** - Lower resolution (typically more cost-effective)
+- **`ImageDetail::High`** - Higher resolution (typically more detailed analysis)
+- **`ImageDetail::Auto`** - Model decides (balanced default)
+
+**⚠️ Token Costs Vary by Model:**
+
+OpenAI's Vision API uses ~85 tokens (Low) and variable tokens based on dimensions (High), but **local models may have completely different token costs**—or no token costs for images at all. The `ImageDetail` setting may even be ignored by some models.
+
+**Always benchmark your specific model** instead of relying on OpenAI's published values for capacity planning.
+
+### Complex Multi-Image Messages
+
+```rust
+use open_agent::{Message, MessageRole, ContentBlock, TextBlock, ImageBlock, ImageDetail};
+
+let msg = Message::new(
+    MessageRole::User,
+    vec![
+        ContentBlock::Text(TextBlock::new("Compare these images:")),
+        ContentBlock::Image(
+            ImageBlock::from_url("https://example.com/before.jpg")
+                .with_detail(ImageDetail::Low)
+        ),
+        ContentBlock::Image(
+            ImageBlock::from_url("https://example.com/after.jpg")
+                .with_detail(ImageDetail::Low)
+        ),
+    ],
+);
+```
+
+**Key Features:**
+
+- **`send_message()` API** - Send pre-built messages with images via `client.send_message(msg).await?`
+- **Automatic serialization** - Images converted to OpenAI Vision API format
+- **Multiple sources** - URLs, local file paths, or base64 data
+- **Backward compatible** - Text-only messages still work with `send("text")`
+- **Data URIs supported** - Base64-encoded images transmitted seamlessly
+- **Token cost control** - Choose detail level based on use case
+
+See `examples/vision_example.rs` for comprehensive working examples including local file paths.
 
 ## Context Management
 

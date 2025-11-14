@@ -226,20 +226,20 @@
 //! while let Some(block) = client.receive().await? {
 //!     match block {
 //!         ContentBlock::ToolUse(tool_use) => {
-//!             println!("Model wants to use: {}", tool_use.name);
+//!             println!("Model wants to use: {}", tool_use.name());
 //!
 //!             // Execute tool manually
-//!             let tool = client.get_tool(&tool_use.name).unwrap();
-//!             let result = tool.execute(tool_use.input).await?;
+//!             let tool = client.get_tool(tool_use.name()).unwrap();
+//!             let result = tool.execute(tool_use.input().clone()).await?;
 //!
 //!             // Add result and continue
-//!             client.add_tool_result(&tool_use.id, result)?;
+//!             client.add_tool_result(tool_use.id(), result)?;
 //!             client.send("").await?;
 //!         }
 //!         ContentBlock::Text(text) => {
 //!             println!("Response: {}", text.text);
 //!         }
-//!         _ => {}
+//!         ContentBlock::ToolResult(_) | ContentBlock::Image(_) => {}
 //!     }
 //! }
 //! # Ok(())
@@ -313,8 +313,8 @@
 //! ```
 
 use crate::types::{
-    AgentOptions, ContentBlock, Message, MessageRole, OpenAIFunction, OpenAIMessage, OpenAIRequest,
-    OpenAIToolCall, TextBlock,
+    AgentOptions, ContentBlock, Message, MessageRole, OpenAIContent, OpenAIContentPart,
+    OpenAIFunction, OpenAIMessage, OpenAIRequest, OpenAIToolCall, TextBlock,
 };
 use crate::utils::{ToolCallAggregator, parse_sse_stream};
 use crate::{Error, Result};
@@ -445,7 +445,9 @@ pub type ContentStream = Pin<Box<dyn Stream<Item = Result<ContentBlock>> + Send>
 ///             open_agent::ContentBlock::Text(text) => {
 ///                 print!("{}", text.text);
 ///             }
-///             _ => {}
+///             open_agent::ContentBlock::ToolUse(_)
+///             | open_agent::ContentBlock::ToolResult(_)
+///             | open_agent::ContentBlock::Image(_) => {}
 ///         }
 ///     }
 ///
@@ -479,12 +481,12 @@ pub type ContentStream = Pin<Box<dyn Stream<Item = Result<ContentBlock>> + Send>
 /// while let Some(block) = stream.next().await {
 ///     match block? {
 ///         ContentBlock::ToolUse(tool_use) => {
-///             println!("Model wants to use: {}", tool_use.name);
+///             println!("Model wants to use: {}", tool_use.name());
 ///             // Note: You'll need to manually execute tools and continue
 ///             // the conversation. For automatic execution, use Client.
 ///         }
 ///         ContentBlock::Text(text) => print!("{}", text.text),
-///         _ => {}
+///         ContentBlock::ToolResult(_) | ContentBlock::Image(_) => {}
 ///     }
 /// }
 /// # Ok(())
@@ -537,7 +539,7 @@ pub async fn query(prompt: &str, options: &AgentOptions) -> Result<ContentStream
     if !options.system_prompt().is_empty() {
         messages.push(OpenAIMessage {
             role: "system".to_string(),
-            content: options.system_prompt().to_string(),
+            content: Some(OpenAIContent::Text(options.system_prompt().to_string())),
             tool_calls: None,
             tool_call_id: None,
         });
@@ -547,7 +549,7 @@ pub async fn query(prompt: &str, options: &AgentOptions) -> Result<ContentStream
     // This is the actual query from the user
     messages.push(OpenAIMessage {
         role: "user".to_string(),
-        content: prompt.to_string(),
+        content: Some(OpenAIContent::Text(prompt.to_string())),
         tool_calls: None,
         tool_call_id: None,
     });
@@ -749,7 +751,7 @@ pub async fn query(prompt: &str, options: &AgentOptions) -> Result<ContentStream
 ///         ContentBlock::ToolUse(tool_use) => {
 ///             // Execute tool manually
 ///             let result = json!({"result": 4});
-///             client.add_tool_result(&tool_use.id, result)?;
+///             client.add_tool_result(tool_use.id(), result)?;
 ///
 ///             // Continue conversation to get model's response
 ///             client.send("").await?;
@@ -757,7 +759,7 @@ pub async fn query(prompt: &str, options: &AgentOptions) -> Result<ContentStream
 ///         ContentBlock::Text(text) => {
 ///             println!("{}", text.text); // "The result is 4."
 ///         }
-///         _ => {}
+///         ContentBlock::ToolResult(_) | ContentBlock::Image(_) => {}
 ///     }
 /// }
 /// # Ok(())
@@ -1035,7 +1037,7 @@ impl Client {
     /// while let Some(block) = client.receive().await? {
     ///     if let ContentBlock::ToolUse(tool_use) = block {
     ///         // Execute tool and add result
-    ///         client.add_tool_result(&tool_use.id, json!({"result": 42}))?;
+    ///         client.add_tool_result(tool_use.id(), json!({"result": 42}))?;
     ///
     ///         // Continue conversation with empty prompt
     ///         client.send("").await?;
@@ -1093,7 +1095,9 @@ impl Client {
         if !self.options.system_prompt().is_empty() {
             messages.push(OpenAIMessage {
                 role: "system".to_string(),
-                content: self.options.system_prompt().to_string(),
+                content: Some(OpenAIContent::Text(
+                    self.options.system_prompt().to_string(),
+                )),
                 tool_calls: None,
                 tool_call_id: None,
             });
@@ -1104,12 +1108,14 @@ impl Client {
         for msg in &self.history {
             // Separate blocks by type to determine message structure
             let mut text_blocks = Vec::new();
+            let mut image_blocks = Vec::new();
             let mut tool_use_blocks = Vec::new();
             let mut tool_result_blocks = Vec::new();
 
             for block in &msg.content {
                 match block {
                     ContentBlock::Text(text) => text_blocks.push(text),
+                    ContentBlock::Image(image) => image_blocks.push(image),
                     ContentBlock::ToolUse(tool_use) => tool_use_blocks.push(tool_use),
                     ContentBlock::ToolResult(tool_result) => tool_result_blocks.push(tool_result),
                 }
@@ -1120,15 +1126,16 @@ impl Client {
             if !tool_result_blocks.is_empty() {
                 for tool_result in tool_result_blocks {
                     // Serialize the tool result content as JSON string
-                    let content = serde_json::to_string(&tool_result.content).unwrap_or_else(|e| {
-                        format!("{{\"error\": \"Failed to serialize: {}\"}}", e)
-                    });
+                    let content =
+                        serde_json::to_string(tool_result.content()).unwrap_or_else(|e| {
+                            format!("{{\"error\": \"Failed to serialize: {}\"}}", e)
+                        });
 
                     messages.push(OpenAIMessage {
                         role: "tool".to_string(),
-                        content,
+                        content: Some(OpenAIContent::Text(content)),
                         tool_calls: None,
-                        tool_call_id: Some(tool_result.tool_use_id.clone()),
+                        tool_call_id: Some(tool_result.tool_use_id().to_string()),
                     });
                 }
             }
@@ -1139,14 +1146,14 @@ impl Client {
                     .iter()
                     .map(|tool_use| {
                         // Serialize the input as a JSON string (OpenAI API requirement)
-                        let arguments = serde_json::to_string(&tool_use.input)
+                        let arguments = serde_json::to_string(tool_use.input())
                             .unwrap_or_else(|_| "{}".to_string());
 
                         OpenAIToolCall {
-                            id: tool_use.id.clone(),
+                            id: tool_use.id().to_string(),
                             call_type: "function".to_string(),
                             function: OpenAIFunction {
-                                name: tool_use.name.clone(),
+                                name: tool_use.name().to_string(),
                                 arguments,
                             },
                         }
@@ -1154,11 +1161,18 @@ impl Client {
                     .collect();
 
                 // Extract any text content (some models include reasoning before tool calls)
-                let content = text_blocks
-                    .iter()
-                    .map(|t| t.text.as_str())
-                    .collect::<Vec<_>>()
-                    .join("\n");
+                // Note: OpenAI API requires content field even if empty when tool_calls present
+                let content = if !text_blocks.is_empty() {
+                    let text = text_blocks
+                        .iter()
+                        .map(|t| t.text.as_str())
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    Some(OpenAIContent::Text(text))
+                } else {
+                    // Empty string satisfies OpenAI API schema (content is required)
+                    Some(OpenAIContent::Text(String::new()))
+                };
 
                 messages.push(OpenAIMessage {
                     role: "assistant".to_string(),
@@ -1167,7 +1181,67 @@ impl Client {
                     tool_call_id: None,
                 });
             }
-            // Case 3: Message contains only text (normal message)
+            // Case 3: Message contains images (use OpenAIContent::Parts)
+            else if !image_blocks.is_empty() {
+                // Log debug info about images being serialized
+                log::debug!(
+                    "Serializing message with {} image(s) for {:?} role",
+                    image_blocks.len(),
+                    msg.role
+                );
+
+                // Build content parts array preserving original order
+                let mut content_parts = Vec::new();
+
+                // Re-iterate through content blocks to maintain order
+                for block in &msg.content {
+                    match block {
+                        ContentBlock::Text(text) => {
+                            content_parts.push(OpenAIContentPart::text(&text.text));
+                        }
+                        ContentBlock::Image(image) => {
+                            // Log image details (truncate URL for privacy)
+                            let url_display = if image.url().len() > 100 {
+                                format!("{}... ({} chars)", &image.url()[..100], image.url().len())
+                            } else {
+                                image.url().to_string()
+                            };
+                            let detail_str = match image.detail() {
+                                crate::types::ImageDetail::Low => "low",
+                                crate::types::ImageDetail::High => "high",
+                                crate::types::ImageDetail::Auto => "auto",
+                            };
+                            log::debug!("  - Image: {} (detail: {})", url_display, detail_str);
+
+                            content_parts.push(OpenAIContentPart::from_image(image));
+                        }
+                        ContentBlock::ToolUse(_) | ContentBlock::ToolResult(_) => {}
+                    }
+                }
+
+                // Defensive check: content_parts should never be empty at this point
+                // If it is, it indicates a logic error (e.g., all blocks were filtered out)
+                if content_parts.is_empty() {
+                    return Err(Error::other(
+                        "Internal error: Message with images produced empty content array",
+                    ));
+                }
+
+                let role_str = match msg.role {
+                    MessageRole::System => "system",
+                    MessageRole::User => "user",
+                    MessageRole::Assistant => "assistant",
+                    MessageRole::Tool => "tool",
+                };
+
+                messages.push(OpenAIMessage {
+                    role: role_str.to_string(),
+                    content: Some(OpenAIContent::Parts(content_parts)),
+                    tool_calls: None,
+                    tool_call_id: None,
+                });
+            }
+            // Case 4: Message contains only text (normal message, backward compatible)
             else {
                 let content = text_blocks
                     .iter()
@@ -1184,7 +1258,7 @@ impl Client {
 
                 messages.push(OpenAIMessage {
                     role: role_str.to_string(),
-                    content,
+                    content: Some(OpenAIContent::Text(content)),
                     tool_calls: None,
                     tool_call_id: None,
                 });
@@ -1477,7 +1551,7 @@ impl Client {
                 match block {
                     ContentBlock::Text(_) => text_blocks.push(block),
                     ContentBlock::ToolUse(_) => tool_blocks.push(block),
-                    _ => {} // Ignore ToolResult and other variants
+                    ContentBlock::ToolResult(_) | ContentBlock::Image(_) => {} // Ignore ToolResult and Image variants
                 }
             }
 
@@ -1535,14 +1609,14 @@ impl Client {
                     // ============================================================
                     use crate::hooks::PreToolUseEvent;
                     let pre_event = PreToolUseEvent::new(
-                        tool_use.name.clone(),
-                        tool_use.input.clone(),
-                        tool_use.id.clone(),
+                        tool_use.name().to_string(),
+                        tool_use.input().clone(),
+                        tool_use.id().to_string(),
                         history_snapshot.clone(),
                     );
 
                     // Track whether to execute and what input to use
-                    let mut tool_input = tool_use.input.clone();
+                    let mut tool_input = tool_use.input().clone();
                     let mut should_execute = true;
                     let mut block_reason = None;
 
@@ -1566,7 +1640,7 @@ impl Client {
                     let result = if should_execute {
                         // Actually execute the tool
                         match self
-                            .execute_tool_internal(&tool_use.name, tool_input.clone())
+                            .execute_tool_internal(tool_use.name(), tool_input.clone())
                             .await
                         {
                             Ok(res) => res, // Success - use the result
@@ -1575,8 +1649,8 @@ impl Client {
                                 // This allows the conversation to continue
                                 serde_json::json!({
                                     "error": e.to_string(),
-                                    "tool": tool_use.name,
-                                    "id": tool_use.id
+                                    "tool": tool_use.name(),
+                                    "id": tool_use.id()
                                 })
                             }
                         }
@@ -1585,8 +1659,8 @@ impl Client {
                         serde_json::json!({
                             "error": "Tool execution blocked by hook",
                             "reason": block_reason.unwrap_or_else(|| "No reason provided".to_string()),
-                            "tool": tool_use.name,
-                            "id": tool_use.id
+                            "tool": tool_use.name(),
+                            "id": tool_use.id()
                         })
                     };
 
@@ -1595,9 +1669,9 @@ impl Client {
                     // ============================================================
                     use crate::hooks::PostToolUseEvent;
                     let post_event = PostToolUseEvent::new(
-                        tool_use.name.clone(),
+                        tool_use.name().to_string(),
                         tool_input,
-                        tool_use.id.clone(),
+                        tool_use.id().to_string(),
                         result.clone(),
                         history_snapshot,
                     );
@@ -1617,7 +1691,7 @@ impl Client {
                     // Add tool result to history
                     // ============================================================
                     // Tool results are added as user messages (per OpenAI convention)
-                    let tool_result = ToolResultBlock::new(&tool_use.id, final_result);
+                    let tool_result = ToolResultBlock::new(tool_use.id(), final_result);
                     let tool_result_msg =
                         Message::user_with_blocks(vec![ContentBlock::ToolResult(tool_result)]);
                     self.history.push(tool_result_msg);
@@ -1707,7 +1781,7 @@ impl Client {
     /// while let Some(block) = client.receive().await? {
     ///     match block {
     ///         ContentBlock::Text(text) => print!("{}", text.text),
-    ///         _ => {}
+    ///         ContentBlock::ToolUse(_) | ContentBlock::ToolResult(_) | ContentBlock::Image(_) => {}
     ///     }
     /// }
     /// # Ok(())
@@ -1729,16 +1803,16 @@ impl Client {
     ///             println!("{}", text.text);
     ///         }
     ///         ContentBlock::ToolUse(tool_use) => {
-    ///             println!("Executing: {}", tool_use.name);
+    ///             println!("Executing: {}", tool_use.name());
     ///
     ///             // Execute tool manually
     ///             let result = json!({"result": 42});
     ///
     ///             // Add result and continue
-    ///             client.add_tool_result(&tool_use.id, result)?;
+    ///             client.add_tool_result(tool_use.id(), result)?;
     ///             client.send("").await?;
     ///         }
-    ///         _ => {}
+    ///         ContentBlock::ToolResult(_) | ContentBlock::Image(_) => {}
     ///     }
     /// }
     /// # Ok(())
@@ -1793,6 +1867,344 @@ impl Client {
     /// # Ok(())
     /// # }
     /// ```
+    ///
+    /// Sends a pre-built message to the AI model.
+    ///
+    /// This method allows sending messages with images or custom content blocks
+    /// that cannot be expressed as simple text prompts. Use the `Message` helper
+    /// methods like [`user_with_image()`](Message::user_with_image),
+    /// [`user_with_image_detail()`](Message::user_with_image_detail), or
+    /// [`user_with_base64_image()`](Message::user_with_base64_image) to create
+    /// messages with multimodal content.
+    ///
+    /// Unlike [`send()`](Client::send), this method:
+    /// - Accepts pre-built `Message` objects instead of text prompts
+    /// - Bypasses `UserPromptSubmit` hooks (since message is already constructed)
+    /// - Enables multimodal interactions (text + images)
+    ///
+    /// After calling this method, use [`receive()`](Client::receive) to get the
+    /// response content blocks.
+    ///
+    /// # Arguments
+    ///
+    /// * `message` - A pre-built message (typically created with `Message::user_with_image()` or similar helpers)
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error` if:
+    /// - Network request fails
+    /// - Server returns an error
+    /// - Response cannot be parsed
+    /// - Request is interrupted via [`interrupt()`](Client::interrupt)
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use open_agent::{Client, AgentOptions, Message, ImageDetail};
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let options = AgentOptions::builder()
+    ///     .model("gpt-4-vision-preview")
+    ///     .base_url("http://localhost:1234/v1")
+    ///     .build()?;
+    ///
+    /// let mut client = Client::new(options)?;
+    ///
+    /// // Send a message with an image
+    /// let msg = Message::user_with_image(
+    ///     "What's in this image?",
+    ///     "https://example.com/photo.jpg"
+    /// )?;
+    /// client.send_message(msg).await?;
+    ///
+    /// // Receive the response
+    /// while let Some(block) = client.receive().await? {
+    ///     // Process response blocks
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn send_message(&mut self, message: Message) -> Result<()> {
+        // Reset interrupt flag for new query
+        // This allows the client to be reused after a previous interruption
+        // Uses SeqCst ordering to ensure visibility across all threads
+        self.interrupted.store(false, Ordering::SeqCst);
+
+        // Note: We do NOT run UserPromptSubmit hooks here because:
+        // 1. The message is already fully constructed
+        // 2. Hooks expect string prompts, not complex Message objects
+        // 3. For multimodal messages, there's no single "prompt" to modify
+
+        // Add message to history BEFORE sending request
+        // This ensures history consistency even if request fails
+        self.history.push(message);
+
+        // The rest of the logic is identical to send() - build and execute request
+        // Build messages array for API request
+        // This includes system prompt + full conversation history
+        let mut messages = Vec::new();
+
+        // Add system prompt as first message if configured
+        // System prompts are added fresh for each request (not from history)
+        if !self.options.system_prompt().is_empty() {
+            messages.push(OpenAIMessage {
+                role: "system".to_string(),
+                content: Some(OpenAIContent::Text(
+                    self.options.system_prompt().to_string(),
+                )),
+                tool_calls: None,
+                tool_call_id: None,
+            });
+        }
+
+        // Convert conversation history to OpenAI message format
+        // This includes user prompts, assistant responses, and tool results
+        for msg in &self.history {
+            // Separate blocks by type to determine message structure
+            let mut text_blocks = Vec::new();
+            let mut image_blocks = Vec::new();
+            let mut tool_use_blocks = Vec::new();
+            let mut tool_result_blocks = Vec::new();
+
+            for block in &msg.content {
+                match block {
+                    ContentBlock::Text(text) => text_blocks.push(text),
+                    ContentBlock::Image(image) => image_blocks.push(image),
+                    ContentBlock::ToolUse(tool_use) => tool_use_blocks.push(tool_use),
+                    ContentBlock::ToolResult(tool_result) => tool_result_blocks.push(tool_result),
+                }
+            }
+
+            // Handle different message types based on content blocks
+            // Case 1: Message contains tool results (should be separate tool messages)
+            if !tool_result_blocks.is_empty() {
+                for tool_result in tool_result_blocks {
+                    // Serialize the tool result content as JSON string
+                    let content =
+                        serde_json::to_string(tool_result.content()).unwrap_or_else(|e| {
+                            format!("{{\"error\": \"Failed to serialize: {}\"}}", e)
+                        });
+
+                    messages.push(OpenAIMessage {
+                        role: "tool".to_string(),
+                        content: Some(OpenAIContent::Text(content)),
+                        tool_calls: None,
+                        tool_call_id: Some(tool_result.tool_use_id().to_string()),
+                    });
+                }
+            }
+            // Case 2: Message contains tool use blocks (assistant with tool calls)
+            else if !tool_use_blocks.is_empty() {
+                // Build tool_calls array
+                let tool_calls: Vec<OpenAIToolCall> = tool_use_blocks
+                    .iter()
+                    .map(|tool_use| {
+                        // Serialize the input as a JSON string (OpenAI API requirement)
+                        let arguments = serde_json::to_string(tool_use.input())
+                            .unwrap_or_else(|_| "{}".to_string());
+
+                        OpenAIToolCall {
+                            id: tool_use.id().to_string(),
+                            call_type: "function".to_string(),
+                            function: OpenAIFunction {
+                                name: tool_use.name().to_string(),
+                                arguments,
+                            },
+                        }
+                    })
+                    .collect();
+
+                // Extract any text content (some models include reasoning before tool calls)
+                // Note: OpenAI API requires content field even if empty when tool_calls present
+                let content = if !text_blocks.is_empty() {
+                    let text = text_blocks
+                        .iter()
+                        .map(|t| t.text.as_str())
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    Some(OpenAIContent::Text(text))
+                } else {
+                    // Empty string satisfies OpenAI API schema (content is required)
+                    Some(OpenAIContent::Text(String::new()))
+                };
+
+                messages.push(OpenAIMessage {
+                    role: "assistant".to_string(),
+                    content,
+                    tool_calls: Some(tool_calls),
+                    tool_call_id: None,
+                });
+            }
+            // Case 3: Message contains images (use OpenAIContent::Parts)
+            else if !image_blocks.is_empty() {
+                // Log debug info about images being serialized
+                log::debug!(
+                    "Serializing message with {} image(s) for {:?} role",
+                    image_blocks.len(),
+                    msg.role
+                );
+
+                // Build content parts array preserving original order
+                let mut content_parts = Vec::new();
+
+                // Re-iterate through content blocks to maintain order
+                for block in &msg.content {
+                    match block {
+                        ContentBlock::Text(text) => {
+                            content_parts.push(OpenAIContentPart::text(&text.text));
+                        }
+                        ContentBlock::Image(image) => {
+                            // Log image details (truncate URL for privacy)
+                            let url_display = if image.url().len() > 100 {
+                                format!("{}... ({} chars)", &image.url()[..100], image.url().len())
+                            } else {
+                                image.url().to_string()
+                            };
+                            let detail_str = match image.detail() {
+                                crate::types::ImageDetail::Low => "low",
+                                crate::types::ImageDetail::High => "high",
+                                crate::types::ImageDetail::Auto => "auto",
+                            };
+                            log::debug!("  - Image: {} (detail: {})", url_display, detail_str);
+
+                            content_parts.push(OpenAIContentPart::from_image(image));
+                        }
+                        ContentBlock::ToolUse(_) | ContentBlock::ToolResult(_) => {}
+                    }
+                }
+
+                // Defensive check: content_parts should never be empty at this point
+                // If it is, it indicates a logic error (e.g., all blocks were filtered out)
+                if content_parts.is_empty() {
+                    return Err(Error::other(
+                        "Internal error: Message with images produced empty content array",
+                    ));
+                }
+
+                let role_str = match msg.role {
+                    MessageRole::System => "system",
+                    MessageRole::User => "user",
+                    MessageRole::Assistant => "assistant",
+                    MessageRole::Tool => "tool",
+                };
+
+                messages.push(OpenAIMessage {
+                    role: role_str.to_string(),
+                    content: Some(OpenAIContent::Parts(content_parts)),
+                    tool_calls: None,
+                    tool_call_id: None,
+                });
+            }
+            // Case 4: Message contains only text (normal message, backward compatible)
+            else {
+                let content = text_blocks
+                    .iter()
+                    .map(|t| t.text.as_str())
+                    .collect::<Vec<_>>()
+                    .join("\n");
+
+                let role_str = match msg.role {
+                    MessageRole::System => "system",
+                    MessageRole::User => "user",
+                    MessageRole::Assistant => "assistant",
+                    MessageRole::Tool => "tool",
+                };
+
+                messages.push(OpenAIMessage {
+                    role: role_str.to_string(),
+                    content: Some(OpenAIContent::Text(content)),
+                    tool_calls: None,
+                    tool_call_id: None,
+                });
+            }
+        }
+
+        // Convert tools to OpenAI format if any are registered
+        let tools = if !self.options.tools().is_empty() {
+            Some(
+                self.options
+                    .tools()
+                    .iter()
+                    .map(|t| t.to_openai_format())
+                    .collect(),
+            )
+        } else {
+            None
+        };
+
+        // Build the OpenAI-compatible request payload
+        let request = OpenAIRequest {
+            model: self.options.model().to_string(),
+            messages,
+            stream: true,
+            max_tokens: self.options.max_tokens(),
+            temperature: Some(self.options.temperature()),
+            tools,
+        };
+
+        // Make HTTP POST request to chat completions endpoint
+        let url = format!("{}/chat/completions", self.options.base_url());
+        let response = self
+            .http_client
+            .post(&url)
+            .header(
+                "Authorization",
+                format!("Bearer {}", self.options.api_key()),
+            )
+            .header("Content-Type", "application/json")
+            .json(&request)
+            .send()
+            .await
+            .map_err(Error::Http)?;
+
+        // Check for HTTP-level errors
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_else(|e| {
+                eprintln!("WARNING: Failed to read error response body: {}", e);
+                "Unknown error (failed to read response body)".to_string()
+            });
+            return Err(Error::api(format!("API error {}: {}", status, body)));
+        }
+
+        // Parse Server-Sent Events stream
+        let sse_stream = parse_sse_stream(response);
+
+        // Aggregate SSE chunks into complete content blocks
+        let stream = sse_stream.scan(ToolCallAggregator::new(), |aggregator, chunk_result| {
+            let result = match chunk_result {
+                Ok(chunk) => match aggregator.process_chunk(chunk) {
+                    Ok(blocks) => {
+                        if blocks.is_empty() {
+                            Some(None) // Partial chunk
+                        } else {
+                            Some(Some(Ok(blocks))) // Complete blocks
+                        }
+                    }
+                    Err(e) => Some(Some(Err(e))),
+                },
+                Err(e) => Some(Some(Err(e))),
+            };
+            futures::future::ready(result)
+        });
+
+        // Flatten nested Options and filter out None values
+        let stream = stream.filter_map(futures::future::ready);
+
+        // Flatten Vec<ContentBlock> into individual blocks
+        let stream = stream.flat_map(|result| {
+            futures::stream::iter(match result {
+                Ok(blocks) => blocks.into_iter().map(Ok).collect(),
+                Err(e) => vec![Err(e)],
+            })
+        });
+
+        // Store the content stream for receive() to consume
+        self.current_stream = Some(Box::pin(stream));
+
+        Ok(())
+    }
+
     pub async fn receive(&mut self) -> Result<Option<ContentBlock>> {
         // ========================================================================
         // AUTO-EXECUTION MODE
@@ -2162,7 +2574,7 @@ impl Client {
     ///             let result = json!({"result": 42});
     ///
     ///             // Add result to history
-    ///             client.add_tool_result(&tool_use.id, result)?;
+    ///             client.add_tool_result(tool_use.id(), result)?;
     ///
     ///             // Continue conversation to get model's response
     ///             client.send("").await?;
@@ -2170,7 +2582,7 @@ impl Client {
     ///         ContentBlock::Text(text) => {
     ///             println!("{}", text.text);
     ///         }
-    ///         _ => {}
+    ///         ContentBlock::ToolResult(_) | ContentBlock::Image(_) => {}
     ///     }
     /// }
     /// # Ok(())
@@ -2189,15 +2601,15 @@ impl Client {
     /// while let Some(block) = client.receive().await? {
     ///     if let ContentBlock::ToolUse(tool_use) = block {
     ///         // Try to execute tool
-    ///         let result = match execute_tool(&tool_use.name, &tool_use.input) {
+    ///         let result = match execute_tool(tool_use.name(), tool_use.input()) {
     ///             Ok(output) => output,
     ///             Err(e) => json!({
     ///                 "error": e.to_string(),
-    ///                 "tool": tool_use.name
+    ///                 "tool": tool_use.name()
     ///             })
     ///         };
     ///
-    ///         client.add_tool_result(&tool_use.id, result)?;
+    ///         client.add_tool_result(tool_use.id(), result)?;
     ///         client.send("").await?;
     ///     }
     /// }
@@ -2231,7 +2643,7 @@ impl Client {
     /// // Execute and add results for all tools
     /// for tool_call in tool_calls {
     ///     let result = json!({"result": 42}); // Execute tool
-    ///     client.add_tool_result(&tool_call.id, result)?;
+    ///     client.add_tool_result(tool_call.id(), result)?;
     /// }
     ///
     /// // Continue conversation
@@ -2246,9 +2658,9 @@ impl Client {
         let result_block = ToolResultBlock::new(tool_use_id, content);
 
         // Add to history as a tool message
-        // Note: Currently using a simplified representation with TextBlock
-        // TODO: Properly serialize ToolResultBlock for OpenAI format
-        let serialized = serde_json::to_string(&result_block.content)
+        // Note: ToolResultBlock is properly serialized in build_api_request()
+        // as a separate message with role="tool" and tool_call_id set
+        let serialized = serde_json::to_string(result_block.content())
             .map_err(|e| Error::config(format!("Failed to serialize tool result: {}", e)))?;
 
         self.history.push(Message::new(
@@ -2292,13 +2704,13 @@ impl Client {
     /// # client.send("test").await?;
     /// while let Some(block) = client.receive().await? {
     ///     if let ContentBlock::ToolUse(tool_use) = block {
-    ///         if let Some(tool) = client.get_tool(&tool_use.name) {
+    ///         if let Some(tool) = client.get_tool(tool_use.name()) {
     ///             // Execute the tool
-    ///             let result = tool.execute(tool_use.input.clone()).await?;
-    ///             client.add_tool_result(&tool_use.id, result)?;
+    ///             let result = tool.execute(tool_use.input().clone()).await?;
+    ///             client.add_tool_result(tool_use.id(), result)?;
     ///             client.send("").await?;
     ///         } else {
-    ///             println!("Unknown tool: {}", tool_use.name);
+    ///             println!("Unknown tool: {}", tool_use.name());
     ///         }
     ///     }
     /// }
@@ -2466,5 +2878,38 @@ mod tests {
         // Type assertion to ensure signature is correct
         let _: Result<Option<ContentBlock>> = std::future::ready(Ok(None)).await;
         drop(client);
+    }
+
+    #[test]
+    fn test_empty_content_parts_protection() {
+        // Test for Issue #3 - Verify empty content_parts causes appropriate handling
+        // This documents expected behavior: messages with images should have content
+
+        use crate::types::{ContentBlock, ImageBlock, Message, MessageRole};
+
+        // GIVEN: Message with an image
+        let img = ImageBlock::from_url("https://example.com/test.jpg").expect("Valid URL");
+
+        let msg = Message::new(MessageRole::User, vec![ContentBlock::Image(img)]);
+
+        // WHEN: Building content_parts
+        let mut content_parts = Vec::new();
+        for block in &msg.content {
+            match block {
+                ContentBlock::Text(text) => {
+                    content_parts.push(crate::types::OpenAIContentPart::text(&text.text));
+                }
+                ContentBlock::Image(image) => {
+                    content_parts.push(crate::types::OpenAIContentPart::from_image(image));
+                }
+                ContentBlock::ToolUse(_) | ContentBlock::ToolResult(_) => {}
+            }
+        }
+
+        // THEN: content_parts should not be empty
+        assert!(
+            !content_parts.is_empty(),
+            "Messages with images should produce non-empty content_parts"
+        );
     }
 }

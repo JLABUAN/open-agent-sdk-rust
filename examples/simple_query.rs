@@ -30,11 +30,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 std::io::Write::flush(&mut std::io::stdout())?;
             }
             ContentBlock::ToolUse(tool) => {
-                println!("\nTool called: {} (id: {})", tool.name, tool.id);
-                println!("Arguments: {}", tool.input);
+                println!("\nTool called: {} (id: {})", tool.name(), tool.id());
+                println!("Arguments: {}", tool.input());
             }
             ContentBlock::ToolResult(_) => {
                 // Tool results not expected in simple query
+            }
+            ContentBlock::Image(_) => {
+                // Images not relevant for this example
             }
         }
     }

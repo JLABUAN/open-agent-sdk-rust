@@ -83,11 +83,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     ContentBlock::ToolUse(tool_use) => {
                         println!(
                             "✓ Received tool use: {} (id: {})",
-                            tool_use.name, tool_use.id
+                            tool_use.name(),
+                            tool_use.id()
                         );
                     }
                     ContentBlock::ToolResult(result) => {
-                        println!("✓ Received tool result for: {}", result.tool_use_id);
+                        println!("✓ Received tool result for: {}", result.tool_use_id());
+                    }
+                    ContentBlock::Image(_) => {
+                        // Images not relevant for this example
                     }
                 }
             }

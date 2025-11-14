@@ -30,21 +30,18 @@ fn create_messages_with_tools(count: usize) -> Vec<Message> {
             messages.push(Message::user("Calculate 2 + 2"));
         } else if i % 3 == 1 {
             // Tool use
-            let tool_use = ToolUseBlock {
-                id: format!("tool_{}", i),
-                name: "calculator".to_string(),
-                input: json!({"operation": "add", "a": 2, "b": 2}),
-            };
+            let tool_use = ToolUseBlock::new(
+                format!("tool_{}", i),
+                "calculator",
+                json!({"operation": "add", "a": 2, "b": 2}),
+            );
             messages.push(Message::new(
                 MessageRole::Assistant,
                 vec![ContentBlock::ToolUse(tool_use)],
             ));
         } else {
             // Tool result
-            let tool_result = ToolResultBlock {
-                tool_use_id: format!("tool_{}", i - 1),
-                content: json!({"result": 4}),
-            };
+            let tool_result = ToolResultBlock::new(format!("tool_{}", i - 1), json!({"result": 4}));
             messages.push(Message::new(
                 MessageRole::User,
                 vec![ContentBlock::ToolResult(tool_result)],
