@@ -1,6 +1,6 @@
 # Open Agent SDK (Rust)
 
-> Build production-ready AI agents in Rust using your own hardware
+> Build AI agents in Rust using your own hardware
 
 **What you can build:**
 
