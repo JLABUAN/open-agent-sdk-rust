@@ -16,7 +16,7 @@
 - **Control** - pick your model (Qwen, Llama, Mistral, etc.)
 
 **How fast?**
-From zero to working agent in under 5 minutes. Rust-native performance (zero-cost abstractions, no GC), fearless concurrency, and production-ready quality with 85+ tests.
+From zero to working agent in under 5 minutes. Rust-native performance (zero-cost abstractions, no GC), fearless concurrency, with 85+ tests.
 
 [![Crates.io](https://img.shields.io/crates/v/open-agent-sdk.svg)](https://crates.io/crates/open-agent-sdk)
 [![Documentation](https://docs.rs/open-agent-sdk/badge.svg)](https://docs.rs/open-agent-sdk)
@@ -610,7 +610,7 @@ See `examples/interrupt_demo.rs` for comprehensive patterns.
 
 ## Practical Examples
 
-We've included production-ready agents that demonstrate real-world usage:
+Example agents demonstrating real-world usage:
 
 ### Git Commit Agent
 
@@ -910,6 +910,6 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
-**Status**: v0.6.0 Published - Multimodal image support, production-ready with comprehensive testing
+**Status**: v0.6.0 Published - Multimodal image support, 110+ unit tests, 61 integration tests
 
 Star this repo if you're building AI agents with local models in Rust!
